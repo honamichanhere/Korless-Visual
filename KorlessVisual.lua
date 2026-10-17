@@ -32,7 +32,7 @@ local queueOnTeleport = queue_on_teleport or (syn and syn.queue_on_teleport) or 
 if queueOnTeleport and env.KorlessTeleportQueuedFor ~= game.JobId then
 	env.KorlessTeleportQueuedFor = game.JobId
 	local prefix = (BRANCH ~= "main") and ('getgenv().KorlessBranch = "' .. BRANCH .. '"; ') or ""
-	pcall(queueOnTeleport, prefix .. 'loadstring(game:HttpGet("' .. SCRIPT_URL .. '"))()')
+	pcall(queueOnTeleport, prefix .. 'if not game:IsLoaded() then game.Loaded:Wait() end task.wait(3) loadstring(game:HttpGet("' .. SCRIPT_URL .. '"))()')
 end
 
 local VisualKorless = Instance.new("ScreenGui")
@@ -575,7 +575,6 @@ local function Scope_Logic4()
 	-- Aset Korblox & pemetaan slot sama persis dengan Mugiwara-HUB (VisualAccessories.lua).
 	local KORBLOX_LEFT_LEG = 139607718
 	local KORBLOX_RIGHT_LEG = 139607673
-	local CACHE_FOLDER_NAME = "Korless_Cache"
 
 	local State = { Headless = false, Korblox = false }
 	local Cache = {}
@@ -602,7 +601,7 @@ local function Scope_Logic4()
 				end
 			end
 		end
-		if #list == 0 then
+		if #list == 0 and not container then
 			local character = player.Character
 			local hum = character and character:FindFirstChildOfClass("Humanoid")
 			if hum then table.insert(list, { Rig = character, Humanoid = hum }) end
@@ -659,18 +658,12 @@ local function Scope_Logic4()
 		end
 	end
 
-	-- R15 Korblox kaki kanan: mesh + texture resmi. Dipakai kalau HumanoidDescription tidak
-	-- menghasilkan mesh Korblox (kaki R15 jadi polos warna kulit).
-	local KORBLOX_R15_MESHES = {
-		RightUpperLeg = "rbxassetid://902942093",
-		RightLowerLeg = "rbxassetid://902942096",
-		RightFoot = "rbxassetid://902942089",
-	}
-	local KORBLOX_R15_TEXTURE = "rbxassetid://902843398"
-
+	-- ---------- R15: ganti mesh/texture di tempat ----------
+	-- Part kaki R15 tidak diganti/dihapus dan joint tidak disentuh; hanya properti tampilan
+	-- (MeshId, TextureID, warna, material) yang disalin dari model cache.
 	local InsertService = game:GetService("InsertService")
 
-	-- Coba beberapa cara memasang mesh/texture; mengembalikan nama cara yang berhasil (atau nil).
+	-- Coba beberapa cara set properti; mengembalikan nama cara yang berhasil (atau nil).
 	local function setMeshProp(part, prop, value)
 		if pcall(function() part[prop] = value end) then return "direct" end
 		if sethiddenproperty and pcall(sethiddenproperty, part, prop, value) then return "sethiddenproperty" end
@@ -680,7 +673,7 @@ local function Scope_Logic4()
 	local function applyMeshById(part, meshId)
 		local method = setMeshProp(part, "MeshId", meshId)
 		if method then return method end
-		-- Cara terakhir: buat MeshPart baru dari mesh itu lalu salin meshnya.
+		-- Cara terakhir: buat MeshPart dari mesh itu lalu salin meshnya.
 		local okNew, newMesh = pcall(function()
 			return InsertService:CreateMeshPartAsync(meshId, Enum.CollisionFidelity.Box, Enum.RenderFidelity.Automatic)
 		end)
@@ -692,24 +685,33 @@ local function Scope_Logic4()
 		return nil
 	end
 
-	local function ensureKorbloxR15(parts)
-		local applied = false
-		for name, meshId in pairs(KORBLOX_R15_MESHES) do
-			local part = parts[name]
-			if part and part:IsA("MeshPart") and not string.find(tostring(part.MeshId), string.match(meshId, "%d+"), 1, true) then
-				for _, child in ipairs(part:GetChildren()) do
-					if child:IsA("SurfaceAppearance") then child:Destroy() end
-				end
-				local meshMethod = applyMeshById(part, meshId)
-				local texMethod = setMeshProp(part, "TextureID", KORBLOX_R15_TEXTURE)
-				warn("[Korless] " .. name .. ": mesh=" .. tostring(meshMethod) .. ", texture=" .. tostring(texMethod) .. ", MeshId sekarang=" .. tostring(part.MeshId))
-				if meshMethod and texMethod then
-					part.Color = Color3.new(1, 1, 1)
-					applied = true
-				end
-			end
+	-- Salin tampilan dari part sumber (cache) ke part tujuan (rig). true kalau berhasil.
+	local function applyLook(dst, src)
+		if not (dst:IsA("MeshPart") and src:IsA("MeshPart")) then return false end
+
+		local meshMethod = "same"
+		if dst.MeshId ~= src.MeshId then meshMethod = applyMeshById(dst, src.MeshId) end
+		local texMethod = "same"
+		if dst.TextureID ~= src.TextureID then texMethod = setMeshProp(dst, "TextureID", src.TextureID) end
+
+		if not meshMethod or not texMethod then
+			warn("[Korless] " .. dst.Name .. ": gagal ganti tampilan (mesh=" .. tostring(meshMethod) .. ", texture=" .. tostring(texMethod) .. ")")
+			return false
 		end
-		if applied then warn("[Korless] mesh Korblox R15 dipasang lewat MeshId override.") end
+
+		for _, child in ipairs(dst:GetChildren()) do
+			if child:IsA("SurfaceAppearance") then child:Destroy() end
+		end
+		for _, child in ipairs(src:GetChildren()) do
+			if child:IsA("SurfaceAppearance") then child:Clone().Parent = dst end
+		end
+
+		pcall(function()
+			dst.Color = src.Color
+			dst.Material = src.Material
+			dst.Transparency = src.Transparency
+		end)
+		return true
 	end
 
 	-- side = "Left" / "Right"; useKorblox = true pasang Korblox, false kembalikan kaki asli.
@@ -727,86 +729,16 @@ local function Scope_Logic4()
 		local noPhys = PhysicalProperties.new(0.01, 0, 0, 0, 0)
 
 		if isR15 then
-			local upperName, lowerName, footName = side .. "UpperLeg", side .. "LowerLeg", side .. "Foot"
-			local oldUpper, oldLower, oldFoot = rig:FindFirstChild(upperName), rig:FindFirstChild(lowerName), rig:FindFirstChild(footName)
-			local srcUpper, srcLower, srcFoot = sourceRig:FindFirstChild(upperName), sourceRig:FindFirstChild(lowerName), sourceRig:FindFirstChild(footName)
-			if not (oldUpper and oldLower and oldFoot and srcUpper and srcLower and srcFoot) then warn("[Korless] R15 " .. side .. " leg parts missing in " .. rig:GetFullName() .. " (rig has: " .. tostring(oldUpper ~= nil) .. "," .. tostring(oldLower ~= nil) .. "," .. tostring(oldFoot ~= nil) .. " | cache has: " .. tostring(srcUpper ~= nil) .. "," .. tostring(srcLower ~= nil) .. "," .. tostring(srcFoot ~= nil) .. ")") return false end
-
-			local joints = rig:FindFirstChild("Joints")
-			local lowerTorso = rig:FindFirstChild("LowerTorso")
-			local hipName, kneeName, ankleName = side .. "Hip", side .. "Knee", side .. "Ankle"
-			local hip = (joints and joints:FindFirstChild(hipName)) or (lowerTorso and lowerTorso:FindFirstChild(hipName)) or rig:FindFirstChild(hipName, true)
-			local knee = (joints and joints:FindFirstChild(kneeName)) or rig:FindFirstChild(kneeName, true)
-			local ankle = (joints and joints:FindFirstChild(ankleName)) or rig:FindFirstChild(ankleName, true)
-			if not (hip and knee and ankle) then warn("[Korless] R15 " .. side .. " joints missing in " .. rig:GetFullName() .. " (hip,knee,ankle = " .. tostring(hip ~= nil) .. "," .. tostring(knee ~= nil) .. "," .. tostring(ankle ~= nil) .. ")") return false end
-
-			local newUpper, newLower, newFoot = srcUpper:Clone(), srcLower:Clone(), srcFoot:Clone()
-			for _, p in ipairs({ newUpper, newLower, newFoot }) do
-				for _, v in ipairs(p:GetChildren()) do if v:IsA("Motor6D") then v:Destroy() end end
-				p.Parent = rig
+			local applied = 0
+			for _, suffix in ipairs({ "UpperLeg", "LowerLeg", "Foot" }) do
+				local dst = rig:FindFirstChild(side .. suffix)
+				local src = sourceRig:FindFirstChild(side .. suffix)
+				if dst and src and applyLook(dst, src) then applied = applied + 1 end
 			end
-
-			local hipPart0 = hip.Part0
-			local okJoints, jointErr = pcall(function()
-				hip.Part1 = newUpper
-				knee.Part0 = newUpper
-				knee.Part1 = newLower
-				ankle.Part0 = newLower
-				ankle.Part1 = newFoot
-			end)
-
-			if okJoints then
-				if hip.Parent == oldUpper then hip.Parent = newUpper end
-				if knee.Parent == oldUpper or knee.Parent == oldLower then knee.Parent = newUpper end
-				if ankle.Parent == oldLower or ankle.Parent == oldFoot then ankle.Parent = newLower end
-			else
-				-- Joint lama tidak bisa diubah (read only): buat Motor6D baru dengan nama yang sama.
-				warn("[Korless] set joint gagal (" .. tostring(jointErr) .. ") pada " .. hip:GetFullName() .. " [" .. hip.ClassName .. "], " .. knee.ClassName .. ", " .. ankle.ClassName .. " -> bangun ulang joint")
-				local function rebuildJoint(old, part0, part1, attName, newParent)
-					local motor = Instance.new("Motor6D")
-					motor.Name = old.Name
-					motor.Part0 = part0
-					motor.Part1 = part1
-					local a0 = part0 and part0:FindFirstChild(attName)
-					local a1 = part1 and part1:FindFirstChild(attName)
-					if a0 and a1 then
-						motor.C0 = a0.CFrame
-						motor.C1 = a1.CFrame
-					else
-						pcall(function() motor.C0 = old.C0 motor.C1 = old.C1 end)
-					end
-					motor.Parent = newParent
-					old:Destroy()
-				end
-				rebuildJoint(hip, hipPart0, newUpper, hipName .. "RigAttachment", newUpper)
-				rebuildJoint(knee, newUpper, newLower, kneeName .. "RigAttachment", newLower)
-				rebuildJoint(ankle, newLower, newFoot, ankleName .. "RigAttachment", newFoot)
+			if applied == 0 then
+				warn("[Korless] R15 " .. side .. " leg: tidak ada part yang berubah di " .. rig:GetFullName())
 			end
-
-			for _, p in ipairs({ newUpper, newLower, newFoot }) do
-				p.Massless = true
-				p.CanCollide = false
-				p.CustomPhysicalProperties = noPhys
-			end
-
-			local colors = rig:FindFirstChildOfClass("BodyColors")
-			if colors then
-				local legColor = side == "Left" and colors.LeftLegColor3 or colors.RightLegColor3
-				newUpper.Color, newLower.Color, newFoot.Color = legColor, legColor, legColor
-			end
-
-			if useKorblox and side == "Right" then
-				ensureKorbloxR15({ RightUpperLeg = newUpper, RightLowerLeg = newLower, RightFoot = newFoot })
-			end
-
-			reconnectCustomParts(oldUpper, newUpper, rig)
-			reconnectCustomParts(oldLower, newLower, rig)
-			reconnectCustomParts(oldFoot, newFoot, rig)
-
-			oldUpper:Destroy()
-			oldLower:Destroy()
-			oldFoot:Destroy()
-			return true
+			return applied > 0
 		end
 
 		-- R6
@@ -854,13 +786,18 @@ local function Scope_Logic4()
 
 	-- ---------- Cache model (avatar sendiri) ----------
 	local function buildCache()
-		local old = workspace:FindFirstChild(CACHE_FOLDER_NAME)
-		if old then old:Destroy() end
-
-		local folder = Instance.new("Folder")
-		folder.Name = CACHE_FOLDER_NAME
-		folder.Parent = workspace
-
+		-- Tunggu game dan karakter siap dulu: bikin model / menyentuh rig saat join terlalu cepat
+		-- bisa bikin Evade menendang pemain ("character not loaded").
+		if not game:IsLoaded() then game.Loaded:Wait() end
+		local waited = 0
+		while alive and waited < 60 do
+			local character = player.Character
+			if character and character:FindFirstChildOfClass("Humanoid") then break end
+			task.wait(0.5)
+			waited = waited + 0.5
+		end
+		task.wait(3)
+		if not alive then return end
 		local okDesc, desc = pcall(function() return Players:GetHumanoidDescriptionFromUserId(player.UserId) end)
 		if not okDesc or not desc then
 			sendNotif("<b>Failed:</b> Failed to fetch Avatar data.", true)
@@ -875,10 +812,6 @@ local function Scope_Logic4()
 		local function make(key, description, rigType, offset)
 			local model = Players:CreateHumanoidModelFromDescription(description, rigType)
 			model.Name = "Cache_" .. key
-			model.Parent = folder
-			model:PivotTo(CFrame.new(5000 + offset, 5000, 5000))
-			local root = model:FindFirstChild("HumanoidRootPart")
-			if root then root.Anchored = true end
 			Cache[key] = model
 		end
 
@@ -1003,8 +936,7 @@ local function Scope_Logic4()
 			if State.Korblox then applyKorblox(false) end
 			if State.Headless then applyHeadless(false) end
 		end)
-		local folder = workspace:FindFirstChild(CACHE_FOLDER_NAME)
-		if folder then folder:Destroy() end
+		for _, model in pairs(Cache) do pcall(function() model:Destroy() end) end
 		if VisualKorless then VisualKorless:Destroy() end
 		-- Destroy memutus semua koneksi tombol/notif milik sesi ini.
 		for _, event in ipairs({ onLoadingFinished, onKorlessClicked, onHeadlessClicked, onKorbloxClicked, triggerNotif, updateButtonState }) do
