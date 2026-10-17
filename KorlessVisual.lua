@@ -668,12 +668,28 @@ local function Scope_Logic4()
 	}
 	local KORBLOX_R15_TEXTURE = "rbxassetid://902843398"
 
+	local InsertService = game:GetService("InsertService")
+
+	-- Coba beberapa cara memasang mesh/texture; mengembalikan nama cara yang berhasil (atau nil).
 	local function setMeshProp(part, prop, value)
-		local ok = pcall(function() part[prop] = value end)
-		if not ok and sethiddenproperty then
-			ok = pcall(sethiddenproperty, part, prop, value)
+		if pcall(function() part[prop] = value end) then return "direct" end
+		if sethiddenproperty and pcall(sethiddenproperty, part, prop, value) then return "sethiddenproperty" end
+		return nil
+	end
+
+	local function applyMeshById(part, meshId)
+		local method = setMeshProp(part, "MeshId", meshId)
+		if method then return method end
+		-- Cara terakhir: buat MeshPart baru dari mesh itu lalu salin meshnya.
+		local okNew, newMesh = pcall(function()
+			return InsertService:CreateMeshPartAsync(meshId, Enum.CollisionFidelity.Box, Enum.RenderFidelity.Automatic)
+		end)
+		if okNew and newMesh then
+			local okApply = pcall(function() part:ApplyMesh(newMesh) end)
+			newMesh:Destroy()
+			if okApply then return "ApplyMesh" end
 		end
-		return ok
+		return nil
 	end
 
 	local function ensureKorbloxR15(parts)
@@ -684,13 +700,12 @@ local function Scope_Logic4()
 				for _, child in ipairs(part:GetChildren()) do
 					if child:IsA("SurfaceAppearance") then child:Destroy() end
 				end
-				local okMesh = setMeshProp(part, "MeshId", meshId)
-				local okTex = setMeshProp(part, "TextureID", KORBLOX_R15_TEXTURE)
-				if okMesh and okTex then
+				local meshMethod = applyMeshById(part, meshId)
+				local texMethod = setMeshProp(part, "TextureID", KORBLOX_R15_TEXTURE)
+				warn("[Korless] " .. name .. ": mesh=" .. tostring(meshMethod) .. ", texture=" .. tostring(texMethod) .. ", MeshId sekarang=" .. tostring(part.MeshId))
+				if meshMethod and texMethod then
 					part.Color = Color3.new(1, 1, 1)
 					applied = true
-				else
-					warn("[Korless] gagal set MeshId/TextureID pada " .. name .. " (executor tidak mengizinkan)")
 				end
 			end
 		end
@@ -849,6 +864,9 @@ local function Scope_Logic4()
 
 
 		if okAll then
+			pcall(function()
+				warn("[Korless] R15 RightUpperLeg MeshId  ori=" .. tostring(Cache.OriR15.RightUpperLeg.MeshId) .. "  korblox=" .. tostring(Cache.KorbloxR15.RightUpperLeg.MeshId))
+			end)
 			cacheReady = true
 		else
 			warn("[Korless] cache error: " .. tostring(buildErr))
