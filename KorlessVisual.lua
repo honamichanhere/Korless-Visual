@@ -746,15 +746,42 @@ local function Scope_Logic4()
 				p.Parent = rig
 			end
 
-			hip.Part1 = newUpper
-			knee.Part0 = newUpper
-			knee.Part1 = newLower
-			ankle.Part0 = newLower
-			ankle.Part1 = newFoot
+			local hipPart0 = hip.Part0
+			local okJoints, jointErr = pcall(function()
+				hip.Part1 = newUpper
+				knee.Part0 = newUpper
+				knee.Part1 = newLower
+				ankle.Part0 = newLower
+				ankle.Part1 = newFoot
+			end)
 
-			if hip.Parent == oldUpper then hip.Parent = newUpper end
-			if knee.Parent == oldUpper or knee.Parent == oldLower then knee.Parent = newUpper end
-			if ankle.Parent == oldLower or ankle.Parent == oldFoot then ankle.Parent = newLower end
+			if okJoints then
+				if hip.Parent == oldUpper then hip.Parent = newUpper end
+				if knee.Parent == oldUpper or knee.Parent == oldLower then knee.Parent = newUpper end
+				if ankle.Parent == oldLower or ankle.Parent == oldFoot then ankle.Parent = newLower end
+			else
+				-- Joint lama tidak bisa diubah (read only): buat Motor6D baru dengan nama yang sama.
+				warn("[Korless] set joint gagal (" .. tostring(jointErr) .. ") pada " .. hip:GetFullName() .. " [" .. hip.ClassName .. "], " .. knee.ClassName .. ", " .. ankle.ClassName .. " -> bangun ulang joint")
+				local function rebuildJoint(old, part0, part1, attName, newParent)
+					local motor = Instance.new("Motor6D")
+					motor.Name = old.Name
+					motor.Part0 = part0
+					motor.Part1 = part1
+					local a0 = part0 and part0:FindFirstChild(attName)
+					local a1 = part1 and part1:FindFirstChild(attName)
+					if a0 and a1 then
+						motor.C0 = a0.CFrame
+						motor.C1 = a1.CFrame
+					else
+						pcall(function() motor.C0 = old.C0 motor.C1 = old.C1 end)
+					end
+					motor.Parent = newParent
+					old:Destroy()
+				end
+				rebuildJoint(hip, hipPart0, newUpper, hipName .. "RigAttachment", newUpper)
+				rebuildJoint(knee, newUpper, newLower, kneeName .. "RigAttachment", newLower)
+				rebuildJoint(ankle, newLower, newFoot, ankleName .. "RigAttachment", newFoot)
+			end
 
 			for _, p in ipairs({ newUpper, newLower, newFoot }) do
 				p.Massless = true
