@@ -659,6 +659,44 @@ local function Scope_Logic4()
 		end
 	end
 
+	-- R15 Korblox kaki kanan: mesh + texture resmi. Dipakai kalau HumanoidDescription tidak
+	-- menghasilkan mesh Korblox (kaki R15 jadi polos warna kulit).
+	local KORBLOX_R15_MESHES = {
+		RightUpperLeg = "rbxassetid://902942093",
+		RightLowerLeg = "rbxassetid://902942096",
+		RightFoot = "rbxassetid://902942089",
+	}
+	local KORBLOX_R15_TEXTURE = "rbxassetid://902843398"
+
+	local function setMeshProp(part, prop, value)
+		local ok = pcall(function() part[prop] = value end)
+		if not ok and sethiddenproperty then
+			ok = pcall(sethiddenproperty, part, prop, value)
+		end
+		return ok
+	end
+
+	local function ensureKorbloxR15(parts)
+		local applied = false
+		for name, meshId in pairs(KORBLOX_R15_MESHES) do
+			local part = parts[name]
+			if part and part:IsA("MeshPart") and not string.find(tostring(part.MeshId), string.match(meshId, "%d+"), 1, true) then
+				for _, child in ipairs(part:GetChildren()) do
+					if child:IsA("SurfaceAppearance") then child:Destroy() end
+				end
+				local okMesh = setMeshProp(part, "MeshId", meshId)
+				local okTex = setMeshProp(part, "TextureID", KORBLOX_R15_TEXTURE)
+				if okMesh and okTex then
+					part.Color = Color3.new(1, 1, 1)
+					applied = true
+				else
+					warn("[Korless] gagal set MeshId/TextureID pada " .. name .. " (executor tidak mengizinkan)")
+				end
+			end
+		end
+		if applied then warn("[Korless] mesh Korblox R15 dipasang lewat MeshId override.") end
+	end
+
 	-- side = "Left" / "Right"; useKorblox = true pasang Korblox, false kembalikan kaki asli.
 	local function replaceLegs(side, useKorblox, rig, hum)
 		if not rig or not hum then return false end
@@ -713,6 +751,10 @@ local function Scope_Logic4()
 			if colors then
 				local legColor = side == "Left" and colors.LeftLegColor3 or colors.RightLegColor3
 				newUpper.Color, newLower.Color, newFoot.Color = legColor, legColor, legColor
+			end
+
+			if useKorblox and side == "Right" then
+				ensureKorbloxR15({ RightUpperLeg = newUpper, RightLowerLeg = newLower, RightFoot = newFoot })
 			end
 
 			reconnectCustomParts(oldUpper, newUpper, rig)
