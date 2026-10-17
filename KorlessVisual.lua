@@ -7,6 +7,34 @@ local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- ==========================================
+-- RE-EXECUTE SAFETY + AUTO EXECUTE
+-- ==========================================
+local env = getgenv and getgenv() or _G
+
+-- Jalankan teardown sesi sebelumnya dulu supaya GUI, loop, dan perubahan visual tidak numpuk.
+if env.KorlessCleanup then
+	local cleanup = env.KorlessCleanup
+	env.KorlessCleanup = nil
+	pcall(cleanup)
+end
+-- Sisa GUI dari versi lama yang belum punya cleanup.
+for _, gui in ipairs(playerGui:GetChildren()) do
+	if gui.Name == "VisualKorless" then gui:Destroy() end
+end
+
+-- Antre script untuk teleport berikutnya (rejoin / ganti server dari dalam game), sekali per server.
+-- Branch default "main"; untuk tes dari branch lain: getgenv().KorlessBranch = "nama-branch" sebelum load.
+-- Menutup game lalu buka lagi tidak bisa ditangani script; untuk itu pakai folder autoexec executor.
+local BRANCH = env.KorlessBranch or "main"
+local SCRIPT_URL = "https://raw.githubusercontent.com/honamichanhere/Korless-Visual/" .. BRANCH .. "/KorlessVisual.lua"
+local queueOnTeleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
+if queueOnTeleport and env.KorlessTeleportQueuedFor ~= game.JobId then
+	env.KorlessTeleportQueuedFor = game.JobId
+	local prefix = (BRANCH ~= "main") and ('getgenv().KorlessBranch = "' .. BRANCH .. '"; ') or ""
+	pcall(queueOnTeleport, prefix .. 'loadstring(game:HttpGet("' .. SCRIPT_URL .. '"))()')
+end
+
 local VisualKorless = Instance.new("ScreenGui")
 VisualKorless.Name = "VisualKorless"
 VisualKorless.DisplayOrder = 99
@@ -999,8 +1027,6 @@ local function Scope_Logic4()
 	end)
 
 	-- Re-execute: batalkan perubahan visual lama, buang cache, hentikan loop.
-	local env = getgenv and getgenv() or _G
-	if env.KorlessCleanup then pcall(env.KorlessCleanup) end
 	env.KorlessCleanup = function()
 		alive = false
 		pcall(function()
@@ -1010,6 +1036,10 @@ local function Scope_Logic4()
 		local folder = workspace:FindFirstChild(CACHE_FOLDER_NAME)
 		if folder then folder:Destroy() end
 		if VisualKorless then VisualKorless:Destroy() end
+		-- Destroy memutus semua koneksi tombol/notif milik sesi ini.
+		for _, event in ipairs({ onLoadingFinished, onKorlessClicked, onHeadlessClicked, onKorbloxClicked, triggerNotif, updateButtonState }) do
+			event:Destroy()
+		end
 	end
 
 	task.spawn(buildCache)
