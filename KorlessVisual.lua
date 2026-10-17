@@ -572,9 +572,9 @@ end
 -- SCOPE 4 : LOGIC SWAP
 -- ==========================================
 local function Scope_Logic4()
-	-- Aset Korblox resmi (kaki kanan saja); dipakai lewat HumanoidDescription jadi tidak butuh akun donor.
-	local KORBLOX_RIGHT_LEG = 139607718 -- Korblox Deathspeaker right leg
-	local DONOR_USER_ID = 8485135229 -- honamichandesu, avatar yang memakai Korblox (fallback)
+	-- Aset Korblox & pemetaan slot sama persis dengan Mugiwara-HUB (VisualAccessories.lua).
+	local KORBLOX_LEFT_LEG = 139607718
+	local KORBLOX_RIGHT_LEG = 139607673
 	local CACHE_FOLDER_NAME = "Korless_Cache"
 
 	local State = { Headless = false, Korblox = false }
@@ -784,10 +784,8 @@ local function Scope_Logic4()
 		end
 
 		local korbloxDesc = desc:Clone()
-		-- Kosongkan slot R15 per-bagian (dari bundle) supaya tidak menimpa RightLeg Korblox.
-		korbloxDesc.RightUpperLeg = 0
-		korbloxDesc.RightLowerLeg = 0
-		korbloxDesc.RightFoot = 0
+		-- Pemetaan slot sama seperti Mugiwara-HUB (aset Korblox dipasang lewat HumanoidDescription).
+		korbloxDesc.LeftLeg = KORBLOX_LEFT_LEG
 		korbloxDesc.RightLeg = KORBLOX_RIGHT_LEG
 
 		local function make(key, description, rigType, offset)
@@ -800,7 +798,7 @@ local function Scope_Logic4()
 			Cache[key] = model
 		end
 
-		local okAll = pcall(function()
+		local okAll, buildErr = pcall(function()
 			make("OriR15", desc, Enum.HumanoidRigType.R15, 0)
 			make("OriR6", desc, Enum.HumanoidRigType.R6, 10)
 			make("KorbloxR15", korbloxDesc, Enum.HumanoidRigType.R15, 20)
@@ -808,28 +806,10 @@ local function Scope_Logic4()
 		end)
 
 
-		-- Kalau mesh kaki R15 tidak berubah, aset Korblox tidak ter-apply dari avatar sendiri:
-		-- pakai avatar donor (yang memang memakai Korblox) sebagai sumber.
-		local function meshOf(model, partName)
-			local part = model and model:FindFirstChild(partName)
-			return part and part:IsA("MeshPart") and part.MeshId or nil
-		end
-		if okAll and meshOf(Cache.KorbloxR15, "RightUpperLeg") == meshOf(Cache.OriR15, "RightUpperLeg") then
-			warn("[Korless] Korblox mesh tidak berubah dari avatar sendiri, pakai avatar donor.")
-			pcall(function()
-				local donorDesc = Players:GetHumanoidDescriptionFromUserId(DONOR_USER_ID)
-				Cache.KorbloxR15:Destroy()
-				Cache.KorbloxR6:Destroy()
-				make("KorbloxR15", donorDesc, Enum.HumanoidRigType.R15, 20)
-				make("KorbloxR6", donorDesc, Enum.HumanoidRigType.R6, 30)
-			end)
-			if meshOf(Cache.KorbloxR15, "RightUpperLeg") == meshOf(Cache.OriR15, "RightUpperLeg") then
-				warn("[Korless] Mesh Korblox R15 masih sama dengan kaki asli.")
-			end
-		end
 		if okAll then
 			cacheReady = true
 		else
+			warn("[Korless] cache error: " .. tostring(buildErr))
 			sendNotif("<b>Failed:</b> Failed to build avatar cache.", true)
 		end
 	end
