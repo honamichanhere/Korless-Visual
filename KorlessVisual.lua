@@ -363,9 +363,12 @@ local function Scope_UI2()
 			onKorlessClicked:Fire() 
 		end)
 
-		updateButtonState.Event:Connect(function(btnName, newText)
-			if btnName == "Korless" then 
-				mobileBtn.Text = newText
+		mobileBtn.Text = "Korless: OFF"
+		updateButtonState.Event:Connect(function(btnName, value)
+			if btnName ~= "Korless" then return end
+			mobileBtn.Text = "Korless: " .. value
+			if value == "ON" or value == "OFF" then
+				mobileBtn.BackgroundColor3 = value == "ON" and Color3.fromRGB(46, 160, 90) or Color3.fromRGB(40, 40, 40)
 			end
 		end)
 
@@ -564,11 +567,57 @@ local function Scope_UI2()
 		HeadlessButton.MouseButton1Click:Connect(function() onHeadlessClicked:Fire() end)
 		KorbloxButton.MouseButton1Click:Connect(function() onKorbloxClicked:Fire() end)
 
-		updateButtonState.Event:Connect(function(btnName, newText)
-			if btnName == "Korless" then ExecuteText1.Text = newText
-			elseif btnName == "Headless" then ExecuteText2.Text = newText
-			elseif btnName == "Korblox" then ExecuteText3.Text = newText
+		-- Tombol pill diubah jadi switch on/off: knob geser + warna track + teks ON/OFF.
+		local COLOR_OFF = Color3.fromRGB(51, 51, 51)
+		local COLOR_ON = Color3.fromRGB(46, 160, 90)
+		local tweenFast = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+		local function makeSwitch(button, label)
+			local knob = Instance.new("Frame")
+			knob.Name = "Knob"
+			knob.AnchorPoint = Vector2.new(0, 0.5)
+			knob.Position = UDim2.new(0.05, 0, 0.5, 0)
+			knob.Size = UDim2.new(0, 0, 0.78, 0)
+			knob.BackgroundColor3 = Color3.new(1, 1, 1)
+			knob.BorderSizePixel = 0
+			knob.Parent = button
+			Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+			local ratio = Instance.new("UIAspectRatio")
+			ratio.AspectRatio = 1
+			ratio.DominantAxis = Enum.DominantAxis.Height
+			ratio.Parent = knob
+
+			label.AnchorPoint = Vector2.new(0.5, 0)
+			label.Size = UDim2.new(0.5, 0, 0.9, 0)
+			label.Position = UDim2.new(0.7, 0, 0, 0)
+			label.Text = "OFF"
+			button.BackgroundColor3 = COLOR_OFF
+
+			return function(value)
+				if value == "ON" or value == "OFF" then
+					local on = value == "ON"
+					label.Text = value
+					label.Position = on and UDim2.new(0.3, 0, 0, 0) or UDim2.new(0.7, 0, 0, 0)
+					TweenService:Create(knob, tweenFast, {
+						AnchorPoint = on and Vector2.new(1, 0.5) or Vector2.new(0, 0.5),
+						Position = on and UDim2.new(0.95, 0, 0.5, 0) or UDim2.new(0.05, 0, 0.5, 0),
+					}):Play()
+					TweenService:Create(button, tweenFast, { BackgroundColor3 = on and COLOR_ON or COLOR_OFF }):Play()
+				else
+					label.Text = value -- "..." saat diproses
+				end
 			end
+		end
+
+		local setters = {
+			Korless = makeSwitch(KorlessButton, ExecuteText1),
+			Headless = makeSwitch(HeadlessButton, ExecuteText2),
+			Korblox = makeSwitch(KorbloxButton, ExecuteText3),
+		}
+
+		updateButtonState.Event:Connect(function(btnName, value)
+			local setter = setters[btnName]
+			if setter then setter(value) end
 		end)
 	end
 end
@@ -625,8 +674,7 @@ end
 -- SCOPE 4 : LOGIC SWAP
 -- ==========================================
 local function Scope_Logic4()
-	-- Aset Korblox resmi; dipakai lewat HumanoidDescription jadi tidak butuh akun donor.
-	local KORBLOX_LEFT_LEG = 139607718
+	-- Aset Korblox resmi (kaki kanan saja); dipakai lewat HumanoidDescription jadi tidak butuh akun donor.
 	local KORBLOX_RIGHT_LEG = 139607673
 	local CACHE_FOLDER_NAME = "Korless_Cache"
 
@@ -815,7 +863,7 @@ local function Scope_Logic4()
 
 	local function setKorblox(rig, hum, state)
 		local ok = false
-		for _, side in ipairs({ "Left", "Right" }) do
+		for _, side in ipairs({ "Right" }) do
 			if replaceLegs(side, state, rig, hum) then ok = true end
 		end
 		return ok
@@ -837,7 +885,6 @@ local function Scope_Logic4()
 		end
 
 		local korbloxDesc = desc:Clone()
-		korbloxDesc.LeftLeg = KORBLOX_LEFT_LEG
 		korbloxDesc.RightLeg = KORBLOX_RIGHT_LEG
 
 		local function make(key, description, rigType, offset)
@@ -866,9 +913,9 @@ local function Scope_Logic4()
 
 	-- ---------- Tombol ----------
 	local function refreshButtons()
-		updateButtonState:Fire("Korless", (State.Headless and State.Korblox) and "Remove" or "Execute")
-		updateButtonState:Fire("Headless", State.Headless and "Remove" or "Execute")
-		updateButtonState:Fire("Korblox", State.Korblox and "Remove" or "Execute")
+		updateButtonState:Fire("Korless", (State.Headless and State.Korblox) and "ON" or "OFF")
+		updateButtonState:Fire("Headless", State.Headless and "ON" or "OFF")
+		updateButtonState:Fire("Korblox", State.Korblox and "ON" or "OFF")
 	end
 
 	local function applyHeadless(state)
@@ -897,7 +944,7 @@ local function Scope_Logic4()
 		end
 
 		isProcessing = true
-		updateButtonState:Fire(mode, "Applying...")
+		updateButtonState:Fire(mode, "...")
 
 		local wantHead, wantLegs = State.Headless, State.Korblox
 		local removing
