@@ -365,10 +365,9 @@ local function Scope_UI2()
 
 	local COLOR_PANEL = Color3.fromRGB(24, 24, 28)
 	local COLOR_ROW = Color3.fromRGB(35, 35, 41)
-	local COLOR_ROW_HOVER = Color3.fromRGB(44, 44, 52)
+	local COLOR_ROW_HOVER = Color3.fromRGB(46, 46, 54)
 	local COLOR_STROKE = Color3.fromRGB(62, 62, 72)
 	local COLOR_TEXT = Color3.fromRGB(240, 240, 245)
-	local COLOR_SUB = Color3.fromRGB(145, 145, 160)
 	local COLOR_OFF = Color3.fromRGB(78, 78, 90)
 	local COLOR_ON = Color3.fromRGB(46, 160, 90)
 	local COLOR_BUSY = Color3.fromRGB(205, 150, 45)
@@ -379,22 +378,21 @@ local function Scope_UI2()
 	local rows
 	if isMobile then
 		rows = {
-			{ id = "Korless", title = "Korless", sub = "Headless + Korblox", fire = onKorlessClicked },
+			{ id = "Korless", title = "Korless", fire = onKorlessClicked },
 		}
 	else
 		rows = {
-			{ id = "Korless", title = "Korless", sub = "Headless + Korblox kanan", fire = onKorlessClicked },
-			{ id = "Headless", title = "Headless", sub = "Sembunyikan kepala", fire = onHeadlessClicked },
-			{ id = "Korblox", title = "Korblox", sub = "Kaki kanan saja", fire = onKorbloxClicked },
+			{ id = "Korless", title = "Korless", fire = onKorlessClicked },
+			{ id = "Headless", title = "Headless", fire = onHeadlessClicked },
+			{ id = "Korblox", title = "Korblox", fire = onKorbloxClicked },
 		}
 	end
 
-	local PANEL_W = isMobile and 190 or 220
-	local PAD = 8
-	local GAP = 6
-	local ROW_H = 42
-	local TITLE_H = isMobile and 0 or 22
-	local PANEL_H = PAD + TITLE_H + (#rows * ROW_H) + ((#rows - 1) * GAP) + PAD
+	local PANEL_W = 104
+	local PAD = 4
+	local GAP = 3
+	local ROW_H = 24
+	local PANEL_H = PAD + (#rows * ROW_H) + ((#rows - 1) * GAP) + PAD
 
 	local Panel = Instance.new("Frame")
 	Panel.Name = "Panel"
@@ -404,24 +402,44 @@ local function Scope_UI2()
 	Panel.BackgroundColor3 = COLOR_PANEL
 	Panel.BorderSizePixel = 0
 	Panel.Parent = VisualKorless
-	Instance.new("UICorner", Panel).CornerRadius = UDim.new(0, 12)
+	Instance.new("UICorner", Panel).CornerRadius = UDim.new(0, 8)
 	local panelStroke = Instance.new("UIStroke", Panel)
 	panelStroke.Color = COLOR_STROKE
 	panelStroke.Thickness = 1
 
-	if not isMobile then
-		local Title = Instance.new("TextLabel")
-		Title.Name = "Title"
-		Title.BackgroundTransparency = 1
-		Title.Position = UDim2.new(0, PAD + 4, 0, PAD)
-		Title.Size = UDim2.new(1, -(PAD * 2), 0, TITLE_H)
-		Title.Font = Enum.Font.GothamBold
-		Title.Text = "KORLESS VISUAL"
-		Title.TextSize = 12
-		Title.TextColor3 = COLOR_SUB
-		Title.TextXAlignment = Enum.TextXAlignment.Left
-		Title.Parent = Panel
+	-- Drag: tahan dan geser di mana saja pada panel. Klik singkat (tanpa geser) = toggle.
+	local connections = {}
+	local drag = nil -- { origin, panelPos, moved, def }
+
+	local function beginPress(input, def)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		drag = { origin = input.Position, panelPos = Panel.Position, moved = false, def = def }
 	end
+
+	table.insert(connections, UserInputService.InputChanged:Connect(function(input)
+		if not drag then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		local delta = input.Position - drag.origin
+		if not drag.moved and delta.Magnitude > 5 then drag.moved = true end
+		if drag.moved then
+			local p = drag.panelPos
+			Panel.Position = UDim2.new(p.X.Scale, p.X.Offset + delta.X, p.Y.Scale, p.Y.Offset + delta.Y)
+		end
+	end))
+
+	table.insert(connections, UserInputService.InputEnded:Connect(function(input)
+		if not drag then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		local finished = drag
+		drag = nil
+		if not finished.moved and finished.def then finished.def.fire:Fire() end
+	end))
+
+	Panel.Destroying:Connect(function()
+		for _, connection in ipairs(connections) do connection:Disconnect() end
+	end)
+
+	Panel.InputBegan:Connect(function(input) beginPress(input, nil) end)
 
 	local setters = {}
 
@@ -433,37 +451,26 @@ local function Scope_UI2()
 		Row.BackgroundColor3 = COLOR_ROW
 		Row.BorderSizePixel = 0
 		Row.Size = UDim2.new(1, -(PAD * 2), 0, ROW_H)
-		Row.Position = UDim2.new(0, PAD, 0, PAD + TITLE_H + (index - 1) * (ROW_H + GAP))
+		Row.Position = UDim2.new(0, PAD, 0, PAD + (index - 1) * (ROW_H + GAP))
 		Row.Parent = Panel
-		Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 9)
+		Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 6)
 
 		local Name = Instance.new("TextLabel")
 		Name.BackgroundTransparency = 1
-		Name.Position = UDim2.new(0, 12, 0, 5)
-		Name.Size = UDim2.new(1, -78, 0, 18)
+		Name.Position = UDim2.new(0, 8, 0, 0)
+		Name.Size = UDim2.new(1, -44, 1, 0)
 		Name.Font = Enum.Font.GothamMedium
 		Name.Text = def.title
-		Name.TextSize = 14
+		Name.TextSize = 12
 		Name.TextColor3 = COLOR_TEXT
 		Name.TextXAlignment = Enum.TextXAlignment.Left
 		Name.Parent = Row
 
-		local Sub = Instance.new("TextLabel")
-		Sub.BackgroundTransparency = 1
-		Sub.Position = UDim2.new(0, 12, 0, 23)
-		Sub.Size = UDim2.new(1, -78, 0, 14)
-		Sub.Font = Enum.Font.Gotham
-		Sub.Text = def.sub
-		Sub.TextSize = 11
-		Sub.TextColor3 = COLOR_SUB
-		Sub.TextXAlignment = Enum.TextXAlignment.Left
-		Sub.Parent = Row
-
 		local Track = Instance.new("Frame")
 		Track.Name = "Track"
 		Track.AnchorPoint = Vector2.new(1, 0.5)
-		Track.Position = UDim2.new(1, -12, 0.5, 0)
-		Track.Size = UDim2.new(0, 46, 0, 24)
+		Track.Position = UDim2.new(1, -6, 0.5, 0)
+		Track.Size = UDim2.new(0, 26, 0, 14)
 		Track.BackgroundColor3 = COLOR_OFF
 		Track.BorderSizePixel = 0
 		Track.Parent = Row
@@ -472,8 +479,8 @@ local function Scope_UI2()
 		local Knob = Instance.new("Frame")
 		Knob.Name = "Knob"
 		Knob.AnchorPoint = Vector2.new(0, 0.5)
-		Knob.Position = UDim2.new(0, 3, 0.5, 0)
-		Knob.Size = UDim2.new(0, 18, 0, 18)
+		Knob.Position = UDim2.new(0, 2, 0.5, 0)
+		Knob.Size = UDim2.new(0, 10, 0, 10)
 		Knob.BackgroundColor3 = Color3.new(1, 1, 1)
 		Knob.BorderSizePixel = 0
 		Knob.Parent = Track
@@ -485,18 +492,16 @@ local function Scope_UI2()
 		Row.MouseLeave:Connect(function()
 			TweenService:Create(Row, tweenFast, { BackgroundColor3 = COLOR_ROW }):Play()
 		end)
-		Row.MouseButton1Click:Connect(function()
-			def.fire:Fire()
-		end)
+		Row.InputBegan:Connect(function(input) beginPress(input, def) end)
 
 		-- value: "ON" / "OFF" / "..." (sedang diproses)
 		setters[def.id] = function(value)
 			if value == "ON" then
 				TweenService:Create(Track, tweenFast, { BackgroundColor3 = COLOR_ON }):Play()
-				TweenService:Create(Knob, tweenFast, { Position = UDim2.new(0, 25, 0.5, 0) }):Play()
+				TweenService:Create(Knob, tweenFast, { Position = UDim2.new(0, 14, 0.5, 0) }):Play()
 			elseif value == "OFF" then
 				TweenService:Create(Track, tweenFast, { BackgroundColor3 = COLOR_OFF }):Play()
-				TweenService:Create(Knob, tweenFast, { Position = UDim2.new(0, 3, 0.5, 0) }):Play()
+				TweenService:Create(Knob, tweenFast, { Position = UDim2.new(0, 2, 0.5, 0) }):Play()
 			else
 				TweenService:Create(Track, tweenFast, { BackgroundColor3 = COLOR_BUSY }):Play()
 			end
@@ -676,9 +681,9 @@ local function Scope_Logic4()
 			local joints = rig:FindFirstChild("Joints")
 			local lowerTorso = rig:FindFirstChild("LowerTorso")
 			local hipName, kneeName, ankleName = side .. "Hip", side .. "Knee", side .. "Ankle"
-			local hip = (joints and joints:FindFirstChild(hipName)) or (lowerTorso and lowerTorso:FindFirstChild(hipName)) or oldUpper:FindFirstChild(hipName)
-			local knee = (joints and joints:FindFirstChild(kneeName)) or oldLower:FindFirstChild(kneeName)
-			local ankle = (joints and joints:FindFirstChild(ankleName)) or oldFoot:FindFirstChild(ankleName)
+			local hip = (joints and joints:FindFirstChild(hipName)) or (lowerTorso and lowerTorso:FindFirstChild(hipName)) or rig:FindFirstChild(hipName, true)
+			local knee = (joints and joints:FindFirstChild(kneeName)) or rig:FindFirstChild(kneeName, true)
+			local ankle = (joints and joints:FindFirstChild(ankleName)) or rig:FindFirstChild(ankleName, true)
 			if not (hip and knee and ankle) then warn("[Korless] R15 " .. side .. " joints missing in " .. rig:GetFullName() .. " (hip,knee,ankle = " .. tostring(hip ~= nil) .. "," .. tostring(knee ~= nil) .. "," .. tostring(ankle ~= nil) .. ")") return false end
 
 			local newUpper, newLower, newFoot = srcUpper:Clone(), srcLower:Clone(), srcFoot:Clone()
@@ -724,7 +729,7 @@ local function Scope_Logic4()
 		local oldLeg = rig:FindFirstChild(legName)
 		local joints = rig:FindFirstChild("Joints")
 		local torso = rig:FindFirstChild("Torso")
-		local hipMotor = (joints and joints:FindFirstChild(legName)) or (torso and torso:FindFirstChild(side .. " Hip"))
+		local hipMotor = (joints and joints:FindFirstChild(legName)) or (torso and torso:FindFirstChild(side .. " Hip")) or rig:FindFirstChild(side .. " Hip", true)
 		local srcLeg = sourceRig:FindFirstChild(legName)
 		if not (oldLeg and hipMotor and srcLeg) then warn("[Korless] R6 " .. side .. " leg parts missing in " .. rig:GetFullName()) return false end
 
