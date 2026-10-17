@@ -625,35 +625,69 @@ end
 -- SCOPE 4 : LOGIC SWAP
 -- ==========================================
 local function Scope_Logic4()
-	local TARGET_USERNAME = "honamichandesu"
-	local avatarDescription = nil
+	-- Aset Korblox resmi; dipakai lewat HumanoidDescription jadi tidak butuh akun donor.
+	local KORBLOX_LEFT_LEG = 139607718
+	local KORBLOX_RIGHT_LEG = 139607673
+	local CACHE_FOLDER_NAME = "Korless_Cache"
+
+	local State = { Headless = false, Korblox = false }
+	local Cache = {}
+	local cacheReady = false
 	local isProcessing = false
+	local alive = true
+	local faceCache = setmetatable({}, { __mode = "k" })    -- rig -> face asli
+	local handledRigs = setmetatable({}, { __mode = "k" })  -- rig yang sudah dapat state aktif
 
 	local function sendNotif(msg, isError)
 		triggerNotif:Fire(msg, isError)
 	end
 
-	local function smartFind(parentObject, nameToFind)
-		if not parentObject then return nil end
-		return parentObject:FindFirstChild(nameToFind, true)
+	-- Semua rig lokal (Evade bisa punya lebih dari satu di Workspace.Rigs).
+	-- Player.Character hanya dipakai kalau Workspace.Rigs tidak punya rig sama sekali.
+	local function getAllRigs()
+		local list = {}
+		local container = workspace:FindFirstChild("Rigs")
+		if container then
+			for _, child in ipairs(container:GetChildren()) do
+				if child:IsA("Model") and child.Name == player.Name then
+					local hum = child:FindFirstChildOfClass("Humanoid")
+					if hum then table.insert(list, { Rig = child, Humanoid = hum }) end
+				end
+			end
+		end
+		if #list == 0 then
+			local character = player.Character
+			local hum = character and character:FindFirstChildOfClass("Humanoid")
+			if hum then table.insert(list, { Rig = character, Humanoid = hum }) end
+		end
+		return list
 	end
 
-	local function hilangkanKepala(rigTarget)
-		if not rigTarget then return end
-		local head = rigTarget:FindFirstChild("Head")
-		if head then
+	-- ---------- Headless ----------
+	local function setHeadHidden(rig, hide)
+		local head = rig and rig:FindFirstChild("Head")
+		if not head then return end
+		local face = head:FindFirstChild("face") or head:FindFirstChild("Decal")
+		if hide then
 			head.Transparency = 1
-			local face = head:FindFirstChild("face") or head:FindFirstChild("Decal")
-			if face then face:Destroy() end
+			if face then
+				faceCache[rig] = face:Clone()
+				face:Destroy()
+			end
+		else
+			head.Transparency = 0
+			if not face and faceCache[rig] then
+				faceCache[rig]:Clone().Parent = head
+			end
 		end
 	end
 
+	-- ---------- Korblox ----------
 	local function reconnectCustomParts(oldPart, newPart, rig)
 		if not oldPart or not newPart or not rig then return end
-
 		for _, obj in ipairs(rig:GetDescendants()) do
 			if obj:IsA("JointInstance") then
-				if obj.Name ~= "RightHip" and obj.Name ~= "RightKnee" and obj.Name ~= "RightAnkle" and obj.Name ~= "Right Hip" then
+				if not string.match(obj.Name, "Hip") and not string.match(obj.Name, "Knee") and not string.match(obj.Name, "Ankle") then
 					if obj.Part0 == oldPart then obj.Part0 = newPart end
 					if obj.Part1 == oldPart then obj.Part1 = newPart end
 				end
@@ -664,19 +698,13 @@ local function Scope_Logic4()
 		end
 
 		for _, child in ipairs(oldPart:GetChildren()) do
-			if child:IsA("CharacterMesh") or child:IsA("WrapTarget") or child:IsA("TouchTransmitter") then
-				continue
-			end
-			if child:IsA("Motor6D") and (child.Name == "RightHip" or child.Name == "RightKnee" or child.Name == "RightAnkle" or child.Name == "Right Hip") then
-				continue
-			end
-			
+			if child:IsA("CharacterMesh") or child:IsA("WrapTarget") or child:IsA("TouchTransmitter") then continue end
+			if child:IsA("Motor6D") and (string.match(child.Name, "Hip") or string.match(child.Name, "Knee") or string.match(child.Name, "Ankle")) then continue end
+
 			if child:IsA("Attachment") and string.match(child.Name, "RigAttachment$") then
 				local targetAtt = newPart:FindFirstChild(child.Name)
 				if targetAtt then
-					for _, attChild in ipairs(child:GetChildren()) do
-						attChild.Parent = targetAtt
-					end
+					for _, attChild in ipairs(child:GetChildren()) do attChild.Parent = targetAtt end
 				end
 			else
 				child.Parent = newPart
@@ -684,315 +712,220 @@ local function Scope_Logic4()
 		end
 	end
 
-	local function doHeadless()
-		local rigsFolder = workspace:FindFirstChild("Rigs")
-		local myRig = rigsFolder and rigsFolder:FindFirstChild(player.Name)
-		
-		hilangkanKepala(myRig)
-		hilangkanKepala(player.Character)
-	end
-
-	local function initVisuals()
-		local successId, userId = pcall(function() return Players:GetUserIdFromNameAsync(TARGET_USERNAME) end)
-		if not successId then return sendNotif("<b>Failed:</b> Failed to find UserId.", true) end
-
-		local successDesc, description = pcall(function() return Players:GetHumanoidDescriptionFromUserId(userId) end)
-		if not successDesc then return sendNotif("<b>Failed:</b> Failed to fetch Avatar data.", true) end
-		
-		avatarDescription = description
-
-		local farCFrame = CFrame.new(2048, 100, 0)
-
-		local spawnedR15 = Players:CreateHumanoidModelFromDescription(description, Enum.HumanoidRigType.R15)
-		spawnedR15.Name = TARGET_USERNAME .. "_Visual_R15"
-		spawnedR15.Parent = workspace
-		spawnedR15:PivotTo(farCFrame)
-		if spawnedR15:FindFirstChild("HumanoidRootPart") then
-			spawnedR15.HumanoidRootPart.Anchored = true 
+	-- side = "Left" / "Right"; useKorblox = true pasang Korblox, false kembalikan kaki asli.
+	local function replaceLegs(side, useKorblox, rig, hum)
+		if not rig or not hum then return false end
+		local isR15 = hum.RigType == Enum.HumanoidRigType.R15
+		local sourceRig
+		if useKorblox then
+			sourceRig = isR15 and Cache.KorbloxR15 or Cache.KorbloxR6
+		else
+			sourceRig = isR15 and Cache.OriR15 or Cache.OriR6
 		end
+		if not sourceRig then return false end
 
-		local spawnedR6 = Players:CreateHumanoidModelFromDescription(description, Enum.HumanoidRigType.R6)
-		spawnedR6.Name = TARGET_USERNAME .. "_Visual_R6"
-		spawnedR6.Parent = workspace
-		spawnedR6:PivotTo(farCFrame * CFrame.new(5, 0, 0)) 
-		if spawnedR6:FindFirstChild("HumanoidRootPart") then
-			spawnedR6.HumanoidRootPart.Anchored = true
-		end
-	end
-
-	local function runTahap1()
-		local rigsFolder = workspace:FindFirstChild("Rigs")
-		local myRig = rigsFolder and rigsFolder:FindFirstChild(player.Name)
-
-		if not myRig then return false end
-
-		local myHum = myRig:FindFirstChild("Humanoid")
-		if not myHum then return false end
-		
-		local isR15 = myHum.RigType == Enum.HumanoidRigType.R15
-
-		local dummyRig = Players:CreateHumanoidModelFromDescription(avatarDescription, myHum.RigType)
-		dummyRig.Name = "TumbalKorblox_Tahap1"
-		dummyRig.Parent = workspace 
-		task.wait(0.3)
-		
-		local sukses = false
+		local noPhys = PhysicalProperties.new(0.01, 0, 0, 0, 0)
 
 		if isR15 then
-			local oldUpper = myRig:FindFirstChild("RightUpperLeg")
-			local oldLower = myRig:FindFirstChild("RightLowerLeg")
-			local oldFoot = myRig:FindFirstChild("RightFoot")
+			local upperName, lowerName, footName = side .. "UpperLeg", side .. "LowerLeg", side .. "Foot"
+			local oldUpper, oldLower, oldFoot = rig:FindFirstChild(upperName), rig:FindFirstChild(lowerName), rig:FindFirstChild(footName)
+			local srcUpper, srcLower, srcFoot = sourceRig:FindFirstChild(upperName), sourceRig:FindFirstChild(lowerName), sourceRig:FindFirstChild(footName)
+			if not (oldUpper and oldLower and oldFoot and srcUpper and srcLower and srcFoot) then return false end
 
-			local newUpper = dummyRig:FindFirstChild("RightUpperLeg")
-			local newLower = dummyRig:FindFirstChild("RightLowerLeg")
-			local newFoot = dummyRig:FindFirstChild("RightFoot")
+			local joints = rig:FindFirstChild("Joints")
+			local lowerTorso = rig:FindFirstChild("LowerTorso")
+			local hipName, kneeName, ankleName = side .. "Hip", side .. "Knee", side .. "Ankle"
+			local hip = (joints and joints:FindFirstChild(hipName)) or (lowerTorso and lowerTorso:FindFirstChild(hipName)) or oldUpper:FindFirstChild(hipName)
+			local knee = (joints and joints:FindFirstChild(kneeName)) or oldLower:FindFirstChild(kneeName)
+			local ankle = (joints and joints:FindFirstChild(ankleName)) or oldFoot:FindFirstChild(ankleName)
+			if not (hip and knee and ankle) then return false end
 
-			if oldUpper and oldLower and oldFoot and newUpper and newLower and newFoot then
-				local joints = myRig:FindFirstChild("Joints")
-				local rightHip = (joints and joints:FindFirstChild("RightHip")) or (myRig:FindFirstChild("LowerTorso") and myRig.LowerTorso:FindFirstChild("RightHip")) or oldUpper:FindFirstChild("RightHip")
-				local rightKnee = (joints and joints:FindFirstChild("RightKnee")) or oldLower:FindFirstChild("RightKnee")
-				local rightAnkle = (joints and joints:FindFirstChild("RightAnkle")) or oldFoot:FindFirstChild("RightAnkle")
-
-				if rightHip and rightKnee and rightAnkle then
-					newUpper.Parent = myRig
-					newLower.Parent = myRig
-					newFoot.Parent = myRig
-
-					rightHip.Part1 = newUpper
-					rightKnee.Part0 = newUpper
-					rightKnee.Part1 = newLower
-					rightAnkle.Part0 = newLower
-					rightAnkle.Part1 = newFoot
-
-					newUpper.Massless = true
-					newLower.Massless = true
-					newFoot.Massless = true
-
-					local myColors = myRig:FindFirstChildOfClass("BodyColors")
-					if myColors then
-						newUpper.Color = myColors.RightLegColor3
-						newLower.Color = myColors.RightLegColor3
-						newFoot.Color = myColors.RightLegColor3
-					end
-
-					reconnectCustomParts(oldUpper, newUpper, myRig)
-					reconnectCustomParts(oldLower, newLower, myRig)
-					reconnectCustomParts(oldFoot, newFoot, myRig)
-
-					oldUpper:Destroy()
-					oldLower:Destroy()
-					oldFoot:Destroy()
-					sukses = true
-				end
+			local newUpper, newLower, newFoot = srcUpper:Clone(), srcLower:Clone(), srcFoot:Clone()
+			for _, p in ipairs({ newUpper, newLower, newFoot }) do
+				for _, v in ipairs(p:GetChildren()) do if v:IsA("Motor6D") then v:Destroy() end end
+				p.Parent = rig
 			end
-		else
-			local myOldLeg = myRig:FindFirstChild("Right Leg")
-			local jointsFolder = myRig:FindFirstChild("Joints")
-			local rightLegMotor = jointsFolder and jointsFolder:FindFirstChild("Right Leg")
-			local targetLeg = dummyRig:FindFirstChild("Right Leg")
 
-			if myOldLeg and rightLegMotor and targetLeg then
-				for _, obj in ipairs(dummyRig:GetChildren()) do
-					if obj:IsA("CharacterMesh") and obj.BodyPart == Enum.BodyPart.RightLeg then
-						for _, oldMesh in ipairs(myRig:GetChildren()) do
-							if oldMesh:IsA("CharacterMesh") and oldMesh.BodyPart == Enum.BodyPart.RightLeg then
-								oldMesh:Destroy()
-							end
-						end
-						obj.Parent = myRig
-					end
-				end
+			hip.Part1 = newUpper
+			knee.Part0 = newUpper
+			knee.Part1 = newLower
+			ankle.Part0 = newLower
+			ankle.Part1 = newFoot
 
-				targetLeg.Parent = myRig
-				rightLegMotor.Part1 = targetLeg
-				targetLeg.Massless = true
+			if hip.Parent == oldUpper then hip.Parent = newUpper end
+			if knee.Parent == oldUpper or knee.Parent == oldLower then knee.Parent = newUpper end
+			if ankle.Parent == oldLower or ankle.Parent == oldFoot then ankle.Parent = newLower end
 
-				local myColors = myRig:FindFirstChildOfClass("BodyColors")
-				if myColors then targetLeg.Color = myColors.RightLegColor3 end
-
-				reconnectCustomParts(myOldLeg, targetLeg, myRig)
-
-				myOldLeg:Destroy()
-				sukses = true
+			for _, p in ipairs({ newUpper, newLower, newFoot }) do
+				p.Massless = true
+				p.CanCollide = false
+				p.CustomPhysicalProperties = noPhys
 			end
+
+			local colors = rig:FindFirstChildOfClass("BodyColors")
+			if colors then
+				local legColor = side == "Left" and colors.LeftLegColor3 or colors.RightLegColor3
+				newUpper.Color, newLower.Color, newFoot.Color = legColor, legColor, legColor
+			end
+
+			reconnectCustomParts(oldUpper, newUpper, rig)
+			reconnectCustomParts(oldLower, newLower, rig)
+			reconnectCustomParts(oldFoot, newFoot, rig)
+
+			oldUpper:Destroy()
+			oldLower:Destroy()
+			oldFoot:Destroy()
+			return true
 		end
 
-		dummyRig:Destroy()
-		return sukses
+		-- R6
+		local legName = side .. " Leg"
+		local oldLeg = rig:FindFirstChild(legName)
+		local joints = rig:FindFirstChild("Joints")
+		local torso = rig:FindFirstChild("Torso")
+		local hipMotor = (joints and joints:FindFirstChild(legName)) or (torso and torso:FindFirstChild(side .. " Hip"))
+		local srcLeg = sourceRig:FindFirstChild(legName)
+		if not (oldLeg and hipMotor and srcLeg) then return false end
+
+		local newLeg = srcLeg:Clone()
+		for _, v in ipairs(newLeg:GetChildren()) do if v:IsA("Motor6D") then v:Destroy() end end
+
+		local bodyPart = side == "Left" and Enum.BodyPart.LeftLeg or Enum.BodyPart.RightLeg
+		for _, mesh in ipairs(rig:GetChildren()) do
+			if mesh:IsA("CharacterMesh") and mesh.BodyPart == bodyPart then mesh:Destroy() end
+		end
+		for _, mesh in ipairs(sourceRig:GetChildren()) do
+			if mesh:IsA("CharacterMesh") and mesh.BodyPart == bodyPart then mesh:Clone().Parent = rig end
+		end
+
+		newLeg.Parent = rig
+		hipMotor.Part1 = newLeg
+		newLeg.Massless = true
+		newLeg.CanCollide = false
+		newLeg.CustomPhysicalProperties = noPhys
+		if hipMotor.Parent == oldLeg then hipMotor.Parent = newLeg end
+
+		local colors = rig:FindFirstChildOfClass("BodyColors")
+		if colors then newLeg.Color = side == "Left" and colors.LeftLegColor3 or colors.RightLegColor3 end
+
+		reconnectCustomParts(oldLeg, newLeg, rig)
+		oldLeg:Destroy()
+		return true
 	end
 
-	local function runTahap2()
-		local character = player.Character
-		if not character then return false end
-		local humanoid = character:FindFirstChild("Humanoid")
-		if not humanoid then return false end
-
-		local isR15 = humanoid.RigType == Enum.HumanoidRigType.R15
-		local dummyRig = Players:CreateHumanoidModelFromDescription(avatarDescription, humanoid.RigType)
-		local sukses = false
-
-		if isR15 then
-			local donorUpper = smartFind(dummyRig, "RightUpperLeg")
-			local donorLower = smartFind(dummyRig, "RightLowerLeg")
-			local donorFoot = smartFind(dummyRig, "RightFoot")
-			
-			local lowerTorso = smartFind(character, "LowerTorso")
-			local oldUpper = smartFind(character, "RightUpperLeg")
-			local oldLower = smartFind(character, "RightLowerLeg")
-			local oldFoot = smartFind(character, "RightFoot")
-			
-			if donorUpper and donorLower and donorFoot and lowerTorso and oldUpper and oldLower and oldFoot then
-				local newUpper = donorUpper:Clone()
-				local newLower = donorLower:Clone()
-				local newFoot = donorFoot:Clone()
-
-				for _, v in ipairs(newUpper:GetDescendants()) do if v:IsA("Motor6D") then v:Destroy() end end
-				for _, v in ipairs(newLower:GetDescendants()) do if v:IsA("Motor6D") then v:Destroy() end end
-				for _, v in ipairs(newFoot:GetDescendants()) do if v:IsA("Motor6D") then v:Destroy() end end
-
-				local newHip = Instance.new("Motor6D")
-				newHip.Name = "RightHip"
-				newHip.Part0 = lowerTorso
-				newHip.Part1 = newUpper
-				
-				local hipAtt0 = lowerTorso:FindFirstChild("RightHipRigAttachment")
-				local hipAtt1 = newUpper:FindFirstChild("RightHipRigAttachment")
-				if hipAtt0 and hipAtt1 then
-					newHip.C0 = hipAtt0.CFrame
-					newHip.C1 = hipAtt1.CFrame
-				end
-				newHip.Parent = newUpper
-
-				local newKnee = Instance.new("Motor6D")
-				newKnee.Name = "RightKnee"
-				newKnee.Part0 = newUpper
-				newKnee.Part1 = newLower
-				
-				local kneeAtt0 = newUpper:FindFirstChild("RightKneeRigAttachment")
-				local kneeAtt1 = newLower:FindFirstChild("RightKneeRigAttachment")
-				if kneeAtt0 and kneeAtt1 then
-					newKnee.C0 = kneeAtt0.CFrame
-					newKnee.C1 = kneeAtt1.CFrame
-				end
-				newKnee.Parent = newLower
-
-				local newAnkle = Instance.new("Motor6D")
-				newAnkle.Name = "RightAnkle"
-				newAnkle.Part0 = newLower
-				newAnkle.Part1 = newFoot
-				
-				local ankleAtt0 = newLower:FindFirstChild("RightAnkleRigAttachment")
-				local ankleAtt1 = newFoot:FindFirstChild("RightAnkleRigAttachment")
-				if ankleAtt0 and ankleAtt1 then
-					newAnkle.C0 = ankleAtt0.CFrame
-					newAnkle.C1 = ankleAtt1.CFrame
-				end
-				newAnkle.Parent = newFoot
-
-				newUpper.Parent = character
-				newLower.Parent = character
-				newFoot.Parent = character
-
-				reconnectCustomParts(oldUpper, newUpper, character)
-				reconnectCustomParts(oldLower, newLower, character)
-				reconnectCustomParts(oldFoot, newFoot, character)
-
-				oldUpper:Destroy()
-				oldLower:Destroy()
-				oldFoot:Destroy()
-				
-				sukses = true
-			end
-		else
-			local donorLeg = smartFind(dummyRig, "Right Leg")
-			local torso = smartFind(character, "Torso")
-			local oldLeg = smartFind(character, "Right Leg")
-			
-			if donorLeg and torso and oldLeg then
-				local newLeg = donorLeg:Clone()
-				local oldHip = smartFind(character, "Right Hip")
-				
-				local newHip = Instance.new("Motor6D")
-				newHip.Name = "Right Hip"
-				newHip.Part0 = torso
-				newHip.Part1 = newLeg
-				if oldHip then
-					newHip.C0 = oldHip.C0
-					newHip.C1 = oldHip.C1
-				end
-				newHip.Parent = torso
-				newLeg.Parent = character
-				
-				for _, obj in ipairs(dummyRig:GetDescendants()) do
-					if obj:IsA("CharacterMesh") and obj.BodyPart == Enum.BodyPart.RightLeg then
-						for _, myObj in ipairs(character:GetDescendants()) do
-							if myObj:IsA("CharacterMesh") and myObj.BodyPart == Enum.BodyPart.RightLeg then
-								myObj:Destroy()
-							end
-						end
-						obj:Clone().Parent = character
-					end
-				end
-				
-				reconnectCustomParts(oldLeg, newLeg, character)
-
-				oldLeg:Destroy()
-				if oldHip then oldHip:Destroy() end
-				
-				sukses = true
-			end
+	local function setKorblox(rig, hum, state)
+		local ok = false
+		for _, side in ipairs({ "Left", "Right" }) do
+			if replaceLegs(side, state, rig, hum) then ok = true end
 		end
-		
-		dummyRig:Destroy()
-		return sukses
+		return ok
+	end
+
+	-- ---------- Cache model (avatar sendiri) ----------
+	local function buildCache()
+		local old = workspace:FindFirstChild(CACHE_FOLDER_NAME)
+		if old then old:Destroy() end
+
+		local folder = Instance.new("Folder")
+		folder.Name = CACHE_FOLDER_NAME
+		folder.Parent = workspace
+
+		local okDesc, desc = pcall(function() return Players:GetHumanoidDescriptionFromUserId(player.UserId) end)
+		if not okDesc or not desc then
+			sendNotif("<b>Failed:</b> Failed to fetch Avatar data.", true)
+			return
+		end
+
+		local korbloxDesc = desc:Clone()
+		korbloxDesc.LeftLeg = KORBLOX_LEFT_LEG
+		korbloxDesc.RightLeg = KORBLOX_RIGHT_LEG
+
+		local function make(key, description, rigType, offset)
+			local model = Players:CreateHumanoidModelFromDescription(description, rigType)
+			model.Name = "Cache_" .. key
+			model.Parent = folder
+			model:PivotTo(CFrame.new(5000 + offset, 5000, 5000))
+			local root = model:FindFirstChild("HumanoidRootPart")
+			if root then root.Anchored = true end
+			Cache[key] = model
+		end
+
+		local okAll = pcall(function()
+			make("OriR15", desc, Enum.HumanoidRigType.R15, 0)
+			make("OriR6", desc, Enum.HumanoidRigType.R6, 10)
+			make("KorbloxR15", korbloxDesc, Enum.HumanoidRigType.R15, 20)
+			make("KorbloxR6", korbloxDesc, Enum.HumanoidRigType.R6, 30)
+		end)
+
+		if okAll then
+			cacheReady = true
+		else
+			sendNotif("<b>Failed:</b> Failed to build avatar cache.", true)
+		end
+	end
+
+	-- ---------- Tombol ----------
+	local function refreshButtons()
+		updateButtonState:Fire("Korless", (State.Headless and State.Korblox) and "Remove" or "Execute")
+		updateButtonState:Fire("Headless", State.Headless and "Remove" or "Execute")
+		updateButtonState:Fire("Korblox", State.Korblox and "Remove" or "Execute")
+	end
+
+	local function applyHeadless(state)
+		State.Headless = state
+		for _, entry in ipairs(getAllRigs()) do setHeadHidden(entry.Rig, state) end
+	end
+
+	local function applyKorblox(state)
+		State.Korblox = state
+		local anyOk = false
+		for _, entry in ipairs(getAllRigs()) do
+			if setKorblox(entry.Rig, entry.Humanoid, state) then anyOk = true end
+		end
+		return anyOk
 	end
 
 	local function executeAction(mode)
 		if isProcessing then return end
-		isProcessing = true
-		updateButtonState:Fire(mode, "Applying...")
-
-		if not avatarDescription then
+		if not cacheReady then
 			sendNotif("<b>Failed:</b> Data loading, please wait.", true)
-			updateButtonState:Fire(mode, "Execute")
-			isProcessing = false
+			return
+		end
+		if #getAllRigs() == 0 then
+			sendNotif("<b>Failed:</b> Rig not found.", true)
 			return
 		end
 
-		local finalSuccess = false
+		isProcessing = true
+		updateButtonState:Fire(mode, "Applying...")
 
-		if mode == "Headless" or mode == "Korless" then
-			doHeadless()
-			finalSuccess = true
+		local wantHead, wantLegs = State.Headless, State.Korblox
+		local removing
+		if mode == "Headless" then
+			wantHead = not State.Headless
+			removing = not wantHead
+		elseif mode == "Korblox" then
+			wantLegs = not State.Korblox
+			removing = not wantLegs
+		else -- Korless: kalau dua-duanya sudah aktif -> lepas, selain itu -> aktifkan dua-duanya
+			local target = not (State.Headless and State.Korblox)
+			wantHead, wantLegs = target, target
+			removing = not target
 		end
 
-		if mode == "Korless" then
-			task.wait(0.1) 
+		local success = true
+		if wantHead ~= State.Headless then applyHeadless(wantHead) end
+		if wantLegs ~= State.Korblox then
+			if not applyKorblox(wantLegs) then success = false end
 		end
 
-		if mode == "Korblox" or mode == "Korless" then
-			local t1 = runTahap1()
-			if t1 then
-				finalSuccess = true
-			else
-				local t2 = runTahap2()
-				if t2 then
-					finalSuccess = true
-				else
-					if mode == "Korblox" then
-						finalSuccess = false
-					end
-				end
-			end
-		end
-
-		if finalSuccess then
-			sendNotif("<b>Success:</b> " .. mode .. " applied!", false)
+		if success then
+			sendNotif("<b>Success:</b> " .. mode .. (removing and " removed!" or " applied!"), false)
 		else
 			sendNotif("<b>Failed:</b> Could not apply " .. mode .. ".", true)
 		end
 
-		updateButtonState:Fire(mode, "Execute")
+		refreshButtons()
 		isProcessing = false
 	end
 
@@ -1000,7 +933,39 @@ local function Scope_Logic4()
 	onHeadlessClicked.Event:Connect(function() executeAction("Headless") end)
 	onKorbloxClicked.Event:Connect(function() executeAction("Korblox") end)
 
-	task.spawn(initVisuals)
+	-- Rig baru (respawn / rig inventory dibuat ulang) otomatis dapat state yang sedang aktif.
+	task.spawn(function()
+		while alive and task.wait(1) do
+			if cacheReady then
+				for _, entry in ipairs(getAllRigs()) do
+					if not handledRigs[entry.Rig] then
+						handledRigs[entry.Rig] = true
+						task.wait(0.5)
+						if entry.Rig.Parent then
+							if State.Headless then setHeadHidden(entry.Rig, true) end
+							if State.Korblox then setKorblox(entry.Rig, entry.Humanoid, true) end
+						end
+					end
+				end
+			end
+		end
+	end)
+
+	-- Re-execute: batalkan perubahan visual lama, buang cache, hentikan loop.
+	local env = getgenv and getgenv() or _G
+	if env.KorlessCleanup then pcall(env.KorlessCleanup) end
+	env.KorlessCleanup = function()
+		alive = false
+		pcall(function()
+			if State.Korblox then applyKorblox(false) end
+			if State.Headless then applyHeadless(false) end
+		end)
+		local folder = workspace:FindFirstChild(CACHE_FOLDER_NAME)
+		if folder then folder:Destroy() end
+		if VisualKorless then VisualKorless:Destroy() end
+	end
+
+	task.spawn(buildCache)
 end
 
 -- ==========================================
