@@ -363,291 +363,156 @@ local function Scope_UI2()
 	local UserInputService = game:GetService("UserInputService")
 	local isMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
 
+	local COLOR_PANEL = Color3.fromRGB(24, 24, 28)
+	local COLOR_ROW = Color3.fromRGB(35, 35, 41)
+	local COLOR_ROW_HOVER = Color3.fromRGB(44, 44, 52)
+	local COLOR_STROKE = Color3.fromRGB(62, 62, 72)
+	local COLOR_TEXT = Color3.fromRGB(240, 240, 245)
+	local COLOR_SUB = Color3.fromRGB(145, 145, 160)
+	local COLOR_OFF = Color3.fromRGB(78, 78, 90)
+	local COLOR_ON = Color3.fromRGB(46, 160, 90)
+	local COLOR_BUSY = Color3.fromRGB(205, 150, 45)
+
+	local tweenFast = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+	-- Mobile: satu switch saja (Korless). Desktop: Korless + Headless + Korblox.
+	local rows
 	if isMobile then
-		local mobileBtn = Instance.new("TextButton")
-		mobileBtn.Name = "MobileExecuteBtn"
-		mobileBtn.AnchorPoint = Vector2.new(0, 1)
-		mobileBtn.Size = UDim2.new(0, 100, 0, 20)
-		mobileBtn.Position = UDim2.new(0, 0, 1, 0)
-		mobileBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-		mobileBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-		mobileBtn.Font = Enum.Font.Nunito
-		mobileBtn.TextSize = 14
-		mobileBtn.Text = "Execute"
-		mobileBtn.BorderSizePixel = 0
-		mobileBtn.Parent = VisualKorless
-
-		local uiCorner = Instance.new("UICorner")
-		uiCorner.CornerRadius = UDim.new(0, 4)
-		uiCorner.Parent = mobileBtn
-
-		local uiStroke = Instance.new("UIStroke")
-		uiStroke.Color = Color3.fromRGB(150, 150, 150)
-		uiStroke.Thickness = 1
-		uiStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		uiStroke.Parent = mobileBtn
-
-		mobileBtn.MouseButton1Click:Connect(function() 
-			onKorlessClicked:Fire() 
-		end)
-
-		mobileBtn.Text = "Korless: OFF"
-		updateButtonState.Event:Connect(function(btnName, value)
-			if btnName ~= "Korless" then return end
-			mobileBtn.Text = "Korless: " .. value
-			if value == "ON" or value == "OFF" then
-				mobileBtn.BackgroundColor3 = value == "ON" and Color3.fromRGB(46, 160, 90) or Color3.fromRGB(40, 40, 40)
-			end
-		end)
-
+		rows = {
+			{ id = "Korless", title = "Korless", sub = "Headless + Korblox", fire = onKorlessClicked },
+		}
 	else
-		local MainFrame = Instance.new("Frame")
-		MainFrame.Name = "MainFrame"
-		MainFrame.AnchorPoint = Vector2.new(0.00, 1.00)
-		MainFrame.Size = UDim2.new(0.00, 100.00, 0.00, 120.00)
-		MainFrame.BorderColor3 = Color3.new(0.00, 0.00, 0.00)
-		MainFrame.Position = UDim2.new(0.00, 0.00, 1.00, -10.00)
-		MainFrame.BorderSizePixel = 0
-		MainFrame.BackgroundTransparency = 1
-		MainFrame.BackgroundColor3 = Color3.new(1.00, 1.00, 1.00)
-		MainFrame.Parent = VisualKorless
+		rows = {
+			{ id = "Korless", title = "Korless", sub = "Headless + Korblox kanan", fire = onKorlessClicked },
+			{ id = "Headless", title = "Headless", sub = "Sembunyikan kepala", fire = onHeadlessClicked },
+			{ id = "Korblox", title = "Korblox", sub = "Kaki kanan saja", fire = onKorbloxClicked },
+		}
+	end
 
-		local Korless = Instance.new("Frame")
-		Korless.Name = "Korless"
-		Korless.AnchorPoint = Vector2.new(1.00, 0.00)
-		Korless.Size = UDim2.new(0.95, 0.00, 0.30, 0.00)
-		Korless.Position = UDim2.new(0.00, 0.00, 0.00, 0.00)
-		Korless.BorderSizePixel = 0
-		Korless.BackgroundTransparency = 1
-		Korless.BackgroundColor3 = Color3.new(1.00, 1.00, 1.00)
-		Korless.Parent = MainFrame
+	local PANEL_W = isMobile and 190 or 220
+	local PAD = 8
+	local GAP = 6
+	local ROW_H = 42
+	local TITLE_H = isMobile and 0 or 22
+	local PANEL_H = PAD + TITLE_H + (#rows * ROW_H) + ((#rows - 1) * GAP) + PAD
 
-		local KorlessButton = Instance.new("ImageButton")
-		KorlessButton.Name = "KorlessButton"
-		KorlessButton.BorderSizePixel = 0
-		KorlessButton.BackgroundColor3 = Color3.new(0.20, 0.20, 0.20)
-		KorlessButton.AnchorPoint = Vector2.new(0.50, 1.00)
-		KorlessButton.Size = UDim2.new(0.90, 0.00, 0.55, 0.00)
-		KorlessButton.Position = UDim2.new(0.50, 0.00, 1.00, 0.00)
-		KorlessButton.Parent = Korless
-		Instance.new("UICorner", KorlessButton).CornerRadius = UDim.new(1.00, 0.00)
+	local Panel = Instance.new("Frame")
+	Panel.Name = "Panel"
+	Panel.AnchorPoint = Vector2.new(0, 1)
+	Panel.Size = UDim2.new(0, PANEL_W, 0, PANEL_H)
+	Panel.Position = UDim2.new(0, -(PANEL_W + 20), 1, -10) -- mulai di luar layar, lalu geser masuk
+	Panel.BackgroundColor3 = COLOR_PANEL
+	Panel.BorderSizePixel = 0
+	Panel.Parent = VisualKorless
+	Instance.new("UICorner", Panel).CornerRadius = UDim.new(0, 12)
+	local panelStroke = Instance.new("UIStroke", Panel)
+	panelStroke.Color = COLOR_STROKE
+	panelStroke.Thickness = 1
 
-		local ExecuteText1 = Instance.new("TextLabel")
-		ExecuteText1.Name = "ExecuteText1"
-		ExecuteText1.TextWrapped = true
-		ExecuteText1.BorderSizePixel = 0
-		ExecuteText1.TextScaled = true
-		ExecuteText1.BackgroundColor3 = Color3.new(1.00, 1.00, 1.00)
-		ExecuteText1.FontFace = Font.new("rbxasset://fonts/families/Nunito.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
-		ExecuteText1.AnchorPoint = Vector2.new(0.50, 0.00)
-		ExecuteText1.TextSize = 14
-		ExecuteText1.Size = UDim2.new(1.00, 0.00, 0.90, 0.00)
-		ExecuteText1.Text = "Execute"
-		ExecuteText1.TextColor3 = Color3.new(1.00, 1.00, 1.00)
-		ExecuteText1.BackgroundTransparency = 1
-		ExecuteText1.Position = UDim2.new(0.50, 0.00, 0.00, 0.00)
-		ExecuteText1.Parent = KorlessButton
+	if not isMobile then
+		local Title = Instance.new("TextLabel")
+		Title.Name = "Title"
+		Title.BackgroundTransparency = 1
+		Title.Position = UDim2.new(0, PAD + 4, 0, PAD)
+		Title.Size = UDim2.new(1, -(PAD * 2), 0, TITLE_H)
+		Title.Font = Enum.Font.GothamBold
+		Title.Text = "KORLESS VISUAL"
+		Title.TextSize = 12
+		Title.TextColor3 = COLOR_SUB
+		Title.TextXAlignment = Enum.TextXAlignment.Left
+		Title.Parent = Panel
+	end
 
-		local UIStroke1 = Instance.new("UIStroke", KorlessButton)
-		UIStroke1.Color = Color3.new(0.59, 0.59, 0.59)
-		UIStroke1.StrokeSizingMode = Enum.StrokeSizingMode.ScaledSize
-		UIStroke1.Thickness = 0.04
+	local setters = {}
 
-		local KorlessText = Instance.new("TextLabel")
-		KorlessText.Name = "KorlessText"
-		KorlessText.TextWrapped = true
-		KorlessText.TextStrokeTransparency = 0.5
-		KorlessText.BorderSizePixel = 0
-		KorlessText.TextScaled = true
-		KorlessText.BackgroundColor3 = Color3.new(1.00, 1.00, 1.00)
-		KorlessText.FontFace = Font.new("rbxasset://fonts/families/Nunito.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
-		KorlessText.TextSize = 14
-		KorlessText.Size = UDim2.new(1.00, 0.00, 0.40, 0.00)
-		KorlessText.Text = "Korless"
-		KorlessText.TextColor3 = Color3.new(1.00, 1.00, 1.00)
-		KorlessText.BackgroundTransparency = 1
-		KorlessText.Parent = Korless
+	for index, def in ipairs(rows) do
+		local Row = Instance.new("TextButton")
+		Row.Name = def.id .. "Row"
+		Row.AutoButtonColor = false
+		Row.Text = ""
+		Row.BackgroundColor3 = COLOR_ROW
+		Row.BorderSizePixel = 0
+		Row.Size = UDim2.new(1, -(PAD * 2), 0, ROW_H)
+		Row.Position = UDim2.new(0, PAD, 0, PAD + TITLE_H + (index - 1) * (ROW_H + GAP))
+		Row.Parent = Panel
+		Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 9)
 
-		local Headless = Instance.new("Frame")
-		Headless.Name = "Headless"
-		Headless.AnchorPoint = Vector2.new(1.00, 0.50)
-		Headless.Size = UDim2.new(0.95, 0.00, 0.30, 0.00)
-		Headless.Position = UDim2.new(0.00, 0.00, 0.50, 0.00)
-		Headless.BorderSizePixel = 0
-		Headless.BackgroundTransparency = 1
-		Headless.BackgroundColor3 = Color3.new(1.00, 1.00, 1.00)
-		Headless.Parent = MainFrame
+		local Name = Instance.new("TextLabel")
+		Name.BackgroundTransparency = 1
+		Name.Position = UDim2.new(0, 12, 0, 5)
+		Name.Size = UDim2.new(1, -78, 0, 18)
+		Name.Font = Enum.Font.GothamMedium
+		Name.Text = def.title
+		Name.TextSize = 14
+		Name.TextColor3 = COLOR_TEXT
+		Name.TextXAlignment = Enum.TextXAlignment.Left
+		Name.Parent = Row
 
-		local HeadlessButton = Instance.new("ImageButton")
-		HeadlessButton.Name = "HeadlessButton"
-		HeadlessButton.BorderSizePixel = 0
-		HeadlessButton.BackgroundColor3 = Color3.new(0.20, 0.20, 0.20)
-		HeadlessButton.AnchorPoint = Vector2.new(0.50, 1.00)
-		HeadlessButton.Size = UDim2.new(0.90, 0.00, 0.55, 0.00)
-		HeadlessButton.Position = UDim2.new(0.50, 0.00, 1.00, 0.00)
-		HeadlessButton.Parent = Headless
-		Instance.new("UICorner", HeadlessButton).CornerRadius = UDim.new(1.00, 0.00)
+		local Sub = Instance.new("TextLabel")
+		Sub.BackgroundTransparency = 1
+		Sub.Position = UDim2.new(0, 12, 0, 23)
+		Sub.Size = UDim2.new(1, -78, 0, 14)
+		Sub.Font = Enum.Font.Gotham
+		Sub.Text = def.sub
+		Sub.TextSize = 11
+		Sub.TextColor3 = COLOR_SUB
+		Sub.TextXAlignment = Enum.TextXAlignment.Left
+		Sub.Parent = Row
 
-		local ExecuteText2 = Instance.new("TextLabel")
-		ExecuteText2.Name = "ExecuteText2"
-		ExecuteText2.TextWrapped = true
-		ExecuteText2.BorderSizePixel = 0
-		ExecuteText2.TextScaled = true
-		ExecuteText2.BackgroundColor3 = Color3.new(1.00, 1.00, 1.00)
-		ExecuteText2.FontFace = Font.new("rbxasset://fonts/families/Nunito.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
-		ExecuteText2.AnchorPoint = Vector2.new(0.50, 0.00)
-		ExecuteText2.TextSize = 14
-		ExecuteText2.Size = UDim2.new(1.00, 0.00, 0.90, 0.00)
-		ExecuteText2.Text = "Execute"
-		ExecuteText2.TextColor3 = Color3.new(1.00, 1.00, 1.00)
-		ExecuteText2.BackgroundTransparency = 1
-		ExecuteText2.Position = UDim2.new(0.50, 0.00, 0.00, 0.00)
-		ExecuteText2.Parent = HeadlessButton
+		local Track = Instance.new("Frame")
+		Track.Name = "Track"
+		Track.AnchorPoint = Vector2.new(1, 0.5)
+		Track.Position = UDim2.new(1, -12, 0.5, 0)
+		Track.Size = UDim2.new(0, 46, 0, 24)
+		Track.BackgroundColor3 = COLOR_OFF
+		Track.BorderSizePixel = 0
+		Track.Parent = Row
+		Instance.new("UICorner", Track).CornerRadius = UDim.new(1, 0)
 
-		local UIStroke2 = Instance.new("UIStroke", HeadlessButton)
-		UIStroke2.Color = Color3.new(0.59, 0.59, 0.59)
-		UIStroke2.StrokeSizingMode = Enum.StrokeSizingMode.ScaledSize
-		UIStroke2.Thickness = 0.04
+		local Knob = Instance.new("Frame")
+		Knob.Name = "Knob"
+		Knob.AnchorPoint = Vector2.new(0, 0.5)
+		Knob.Position = UDim2.new(0, 3, 0.5, 0)
+		Knob.Size = UDim2.new(0, 18, 0, 18)
+		Knob.BackgroundColor3 = Color3.new(1, 1, 1)
+		Knob.BorderSizePixel = 0
+		Knob.Parent = Track
+		Instance.new("UICorner", Knob).CornerRadius = UDim.new(1, 0)
 
-		local HeadlessText = Instance.new("TextLabel")
-		HeadlessText.Name = "HeadlessText"
-		HeadlessText.TextWrapped = true
-		HeadlessText.TextStrokeTransparency = 0.5
-		HeadlessText.BorderSizePixel = 0
-		HeadlessText.TextScaled = true
-		HeadlessText.BackgroundColor3 = Color3.new(1.00, 1.00, 1.00)
-		HeadlessText.FontFace = Font.new("rbxasset://fonts/families/Nunito.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
-		HeadlessText.TextSize = 14
-		HeadlessText.Size = UDim2.new(1.00, 0.00, 0.40, 0.00)
-		HeadlessText.Text = "Headless Only"
-		HeadlessText.TextColor3 = Color3.new(1.00, 1.00, 1.00)
-		HeadlessText.BackgroundTransparency = 1
-		HeadlessText.Parent = Headless
+		Row.MouseEnter:Connect(function()
+			TweenService:Create(Row, tweenFast, { BackgroundColor3 = COLOR_ROW_HOVER }):Play()
+		end)
+		Row.MouseLeave:Connect(function()
+			TweenService:Create(Row, tweenFast, { BackgroundColor3 = COLOR_ROW }):Play()
+		end)
+		Row.MouseButton1Click:Connect(function()
+			def.fire:Fire()
+		end)
 
-		local Korblox = Instance.new("Frame")
-		Korblox.Name = "Korblox"
-		Korblox.AnchorPoint = Vector2.new(1.00, 1.00)
-		Korblox.Size = UDim2.new(0.95, 0.00, 0.30, 0.00)
-		Korblox.Position = UDim2.new(0.00, 0.00, 1.00, 0.00)
-		Korblox.BorderSizePixel = 0
-		Korblox.BackgroundTransparency = 1
-		Korblox.BackgroundColor3 = Color3.new(1.00, 1.00, 1.00)
-		Korblox.Parent = MainFrame
-
-		local KorbloxButton = Instance.new("ImageButton")
-		KorbloxButton.Name = "KorbloxButton"
-		KorbloxButton.BorderSizePixel = 0
-		KorbloxButton.BackgroundColor3 = Color3.new(0.20, 0.20, 0.20)
-		KorbloxButton.AnchorPoint = Vector2.new(0.50, 1.00)
-		KorbloxButton.Size = UDim2.new(0.90, 0.00, 0.55, 0.00)
-		KorbloxButton.Position = UDim2.new(0.50, 0.00, 1.00, 0.00)
-		KorbloxButton.Parent = Korblox
-		Instance.new("UICorner", KorbloxButton).CornerRadius = UDim.new(1.00, 0.00)
-
-		local ExecuteText3 = Instance.new("TextLabel")
-		ExecuteText3.Name = "ExecuteText3"
-		ExecuteText3.TextWrapped = true
-		ExecuteText3.BorderSizePixel = 0
-		ExecuteText3.TextScaled = true
-		ExecuteText3.BackgroundColor3 = Color3.new(1.00, 1.00, 1.00)
-		ExecuteText3.FontFace = Font.new("rbxasset://fonts/families/Nunito.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
-		ExecuteText3.AnchorPoint = Vector2.new(0.50, 0.00)
-		ExecuteText3.TextSize = 14
-		ExecuteText3.Size = UDim2.new(1.00, 0.00, 0.90, 0.00)
-		ExecuteText3.Text = "Execute"
-		ExecuteText3.TextColor3 = Color3.new(1.00, 1.00, 1.00)
-		ExecuteText3.BackgroundTransparency = 1
-		ExecuteText3.Position = UDim2.new(0.50, 0.00, 0.00, 0.00)
-		ExecuteText3.Parent = KorbloxButton
-
-		local UIStroke3 = Instance.new("UIStroke", KorbloxButton)
-		UIStroke3.Color = Color3.new(0.59, 0.59, 0.59)
-		UIStroke3.StrokeSizingMode = Enum.StrokeSizingMode.ScaledSize
-		UIStroke3.Thickness = 0.04
-
-		local KorbloxText = Instance.new("TextLabel")
-		KorbloxText.Name = "KorbloxText"
-		KorbloxText.TextWrapped = true
-		KorbloxText.TextStrokeTransparency = 0.5
-		KorbloxText.BorderSizePixel = 0
-		KorbloxText.TextScaled = true
-		KorbloxText.BackgroundColor3 = Color3.new(1.00, 1.00, 1.00)
-		KorbloxText.FontFace = Font.new("rbxasset://fonts/families/Nunito.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
-		KorbloxText.TextSize = 14
-		KorbloxText.Size = UDim2.new(1.00, 0.00, 0.40, 0.00)
-		KorbloxText.Text = "Korblox Only"
-		KorbloxText.TextColor3 = Color3.new(1.00, 1.00, 1.00)
-		KorbloxText.BackgroundTransparency = 1
-		KorbloxText.Parent = Korblox
-
-		local tInfo = TweenService:Create(Korless, TweenInfo.new(1.0, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2.new(1.00, 0.00, 0.00, 0.00)})
-		tInfo:Play()
-		task.wait(0.2)
-
-		local tInfo2 = TweenService:Create(Headless, TweenInfo.new(1.0, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2.new(1.00, 0.00, 0.50, 0.00)})
-		tInfo2:Play()
-		task.wait(0.2)
-
-		local tInfo3 = TweenService:Create(Korblox, TweenInfo.new(1.0, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2.new(1.00, 0.00, 1.00, 0.00)})
-		tInfo3:Play()
-
-		KorlessButton.MouseButton1Click:Connect(function() onKorlessClicked:Fire() end)
-		HeadlessButton.MouseButton1Click:Connect(function() onHeadlessClicked:Fire() end)
-		KorbloxButton.MouseButton1Click:Connect(function() onKorbloxClicked:Fire() end)
-
-		-- Tombol pill diubah jadi switch on/off: knob geser + warna track + teks ON/OFF.
-		local COLOR_OFF = Color3.fromRGB(51, 51, 51)
-		local COLOR_ON = Color3.fromRGB(46, 160, 90)
-		local tweenFast = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
-		local function makeSwitch(button, label)
-			local knob = Instance.new("Frame")
-			knob.Name = "Knob"
-			knob.AnchorPoint = Vector2.new(0, 0.5)
-			knob.Position = UDim2.new(0.05, 0, 0.5, 0)
-			knob.Size = UDim2.new(0, 0, 0.78, 0)
-			knob.BackgroundColor3 = Color3.new(1, 1, 1)
-			knob.BorderSizePixel = 0
-			knob.Parent = button
-			Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-			local ratio = Instance.new("UIAspectRatioConstraint")
-			ratio.AspectRatio = 1
-			ratio.DominantAxis = Enum.DominantAxis.Height
-			ratio.Parent = knob
-
-			label.AnchorPoint = Vector2.new(0.5, 0)
-			label.Size = UDim2.new(0.5, 0, 0.9, 0)
-			label.Position = UDim2.new(0.7, 0, 0, 0)
-			label.Text = "OFF"
-			button.BackgroundColor3 = COLOR_OFF
-
-			return function(value)
-				if value == "ON" or value == "OFF" then
-					local on = value == "ON"
-					label.Text = value
-					label.Position = on and UDim2.new(0.3, 0, 0, 0) or UDim2.new(0.7, 0, 0, 0)
-					TweenService:Create(knob, tweenFast, {
-						AnchorPoint = on and Vector2.new(1, 0.5) or Vector2.new(0, 0.5),
-						Position = on and UDim2.new(0.95, 0, 0.5, 0) or UDim2.new(0.05, 0, 0.5, 0),
-					}):Play()
-					TweenService:Create(button, tweenFast, { BackgroundColor3 = on and COLOR_ON or COLOR_OFF }):Play()
-				else
-					label.Text = value -- "..." saat diproses
-				end
+		-- value: "ON" / "OFF" / "..." (sedang diproses)
+		setters[def.id] = function(value)
+			if value == "ON" then
+				TweenService:Create(Track, tweenFast, { BackgroundColor3 = COLOR_ON }):Play()
+				TweenService:Create(Knob, tweenFast, { Position = UDim2.new(0, 25, 0.5, 0) }):Play()
+			elseif value == "OFF" then
+				TweenService:Create(Track, tweenFast, { BackgroundColor3 = COLOR_OFF }):Play()
+				TweenService:Create(Knob, tweenFast, { Position = UDim2.new(0, 3, 0.5, 0) }):Play()
+			else
+				TweenService:Create(Track, tweenFast, { BackgroundColor3 = COLOR_BUSY }):Play()
 			end
 		end
-
-		local setters = {
-			Korless = makeSwitch(KorlessButton, ExecuteText1),
-			Headless = makeSwitch(HeadlessButton, ExecuteText2),
-			Korblox = makeSwitch(KorbloxButton, ExecuteText3),
-		}
-
-		updateButtonState.Event:Connect(function(btnName, value)
-			local setter = setters[btnName]
-			if setter then setter(value) end
-		end)
 	end
+
+	updateButtonState.Event:Connect(function(id, value)
+		local setter = setters[id]
+		if setter then setter(value) end
+	end)
+
+	TweenService:Create(
+		Panel,
+		TweenInfo.new(0.8, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+		{ Position = UDim2.new(0, 10, 1, -10) }
+	):Play()
 end
 
 -- ==========================================
@@ -703,7 +568,7 @@ end
 -- ==========================================
 local function Scope_Logic4()
 	-- Aset Korblox resmi (kaki kanan saja); dipakai lewat HumanoidDescription jadi tidak butuh akun donor.
-	local KORBLOX_RIGHT_LEG = 139607673
+	local KORBLOX_RIGHT_LEG = 139607718 -- Korblox Deathspeaker right leg
 	local CACHE_FOLDER_NAME = "Korless_Cache"
 
 	local State = { Headless = false, Korblox = false }
@@ -989,10 +854,17 @@ local function Scope_Logic4()
 			removing = not target
 		end
 
+		-- pcall: kalau ada error di tengah jalan, tombol tetap dilepas (tidak nyangkut di "...").
 		local success = true
-		if wantHead ~= State.Headless then applyHeadless(wantHead) end
-		if wantLegs ~= State.Korblox then
-			if not applyKorblox(wantLegs) then success = false end
+		local okRun, runErr = pcall(function()
+			if wantHead ~= State.Headless then applyHeadless(wantHead) end
+			if wantLegs ~= State.Korblox then
+				if not applyKorblox(wantLegs) then success = false end
+			end
+		end)
+		if not okRun then
+			success = false
+			warn("[Korless] " .. mode .. " error: " .. tostring(runErr))
 		end
 
 		if success then
