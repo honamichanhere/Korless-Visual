@@ -610,7 +610,7 @@ local function Scope_UI2()
 			knob.BorderSizePixel = 0
 			knob.Parent = button
 			Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-			local ratio = Instance.new("UIAspectRatio")
+			local ratio = Instance.new("UIAspectRatioConstraint")
 			ratio.AspectRatio = 1
 			ratio.DominantAxis = Enum.DominantAxis.Height
 			ratio.Parent = knob
