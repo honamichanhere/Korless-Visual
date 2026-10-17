@@ -798,7 +798,7 @@ local function Scope_Logic4()
 		else
 			sourceRig = isR15 and Cache.OriR15 or Cache.OriR6
 		end
-		if not sourceRig then return false end
+		if not sourceRig then warn("[Korless] cache model missing (useKorblox=" .. tostring(useKorblox) .. ", R15=" .. tostring(isR15) .. ")") return false end
 
 		local noPhys = PhysicalProperties.new(0.01, 0, 0, 0, 0)
 
@@ -806,7 +806,7 @@ local function Scope_Logic4()
 			local upperName, lowerName, footName = side .. "UpperLeg", side .. "LowerLeg", side .. "Foot"
 			local oldUpper, oldLower, oldFoot = rig:FindFirstChild(upperName), rig:FindFirstChild(lowerName), rig:FindFirstChild(footName)
 			local srcUpper, srcLower, srcFoot = sourceRig:FindFirstChild(upperName), sourceRig:FindFirstChild(lowerName), sourceRig:FindFirstChild(footName)
-			if not (oldUpper and oldLower and oldFoot and srcUpper and srcLower and srcFoot) then return false end
+			if not (oldUpper and oldLower and oldFoot and srcUpper and srcLower and srcFoot) then warn("[Korless] R15 " .. side .. " leg parts missing in " .. rig:GetFullName() .. " (rig has: " .. tostring(oldUpper ~= nil) .. "," .. tostring(oldLower ~= nil) .. "," .. tostring(oldFoot ~= nil) .. " | cache has: " .. tostring(srcUpper ~= nil) .. "," .. tostring(srcLower ~= nil) .. "," .. tostring(srcFoot ~= nil) .. ")") return false end
 
 			local joints = rig:FindFirstChild("Joints")
 			local lowerTorso = rig:FindFirstChild("LowerTorso")
@@ -814,7 +814,7 @@ local function Scope_Logic4()
 			local hip = (joints and joints:FindFirstChild(hipName)) or (lowerTorso and lowerTorso:FindFirstChild(hipName)) or oldUpper:FindFirstChild(hipName)
 			local knee = (joints and joints:FindFirstChild(kneeName)) or oldLower:FindFirstChild(kneeName)
 			local ankle = (joints and joints:FindFirstChild(ankleName)) or oldFoot:FindFirstChild(ankleName)
-			if not (hip and knee and ankle) then return false end
+			if not (hip and knee and ankle) then warn("[Korless] R15 " .. side .. " joints missing in " .. rig:GetFullName() .. " (hip,knee,ankle = " .. tostring(hip ~= nil) .. "," .. tostring(knee ~= nil) .. "," .. tostring(ankle ~= nil) .. ")") return false end
 
 			local newUpper, newLower, newFoot = srcUpper:Clone(), srcLower:Clone(), srcFoot:Clone()
 			for _, p in ipairs({ newUpper, newLower, newFoot }) do
@@ -861,7 +861,7 @@ local function Scope_Logic4()
 		local torso = rig:FindFirstChild("Torso")
 		local hipMotor = (joints and joints:FindFirstChild(legName)) or (torso and torso:FindFirstChild(side .. " Hip"))
 		local srcLeg = sourceRig:FindFirstChild(legName)
-		if not (oldLeg and hipMotor and srcLeg) then return false end
+		if not (oldLeg and hipMotor and srcLeg) then warn("[Korless] R6 " .. side .. " leg parts missing in " .. rig:GetFullName()) return false end
 
 		local newLeg = srcLeg:Clone()
 		for _, v in ipairs(newLeg:GetChildren()) do if v:IsA("Motor6D") then v:Destroy() end end
@@ -952,11 +952,12 @@ local function Scope_Logic4()
 	end
 
 	local function applyKorblox(state)
-		State.Korblox = state
+		local previous = State.Korblox
 		local anyOk = false
 		for _, entry in ipairs(getAllRigs()) do
 			if setKorblox(entry.Rig, entry.Humanoid, state) then anyOk = true end
 		end
+		State.Korblox = anyOk and state or previous
 		return anyOk
 	end
 
