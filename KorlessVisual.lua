@@ -790,13 +790,13 @@ local function Scope_Logic4()
 		-- bisa bikin Evade menendang pemain ("character not loaded").
 		if not game:IsLoaded() then game.Loaded:Wait() end
 		local waited = 0
-		while alive and waited < 60 do
+		while alive and waited < 10 do
 			local character = player.Character
-			if character and character:FindFirstChildOfClass("Humanoid") then break end
+			if #getAllRigs() > 0 or (character and character:FindFirstChildOfClass("Humanoid")) then break end
 			task.wait(0.5)
 			waited = waited + 0.5
 		end
-		task.wait(3)
+		task.wait(2)
 		if not alive then return end
 		local okDesc, desc = pcall(function() return Players:GetHumanoidDescriptionFromUserId(player.UserId) end)
 		if not okDesc or not desc then
